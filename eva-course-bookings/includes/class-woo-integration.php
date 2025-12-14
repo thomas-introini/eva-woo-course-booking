@@ -73,6 +73,9 @@ class Woo_Integration
         // Thank you page.
         add_action('woocommerce_thankyou', array($this, 'display_thankyou_slot_info'), 5);
 
+        // View order page (My Account).
+        add_action('woocommerce_view_order', array($this, 'display_thankyou_slot_info'), 5);
+
         // Emails.
         add_action('woocommerce_email_order_details', array($this, 'add_email_slot_info'), 5, 4);
 
@@ -538,7 +541,7 @@ class Woo_Integration
     public function display_thankyou_slot_info($order_id)
     {
         $order     = wc_get_order($order_id);
-        $slot_info = $order->get_meta('_eva_slot_info');
+        $slot_info = $this->get_slot_info_for_order($order);
 
         if (empty($slot_info)) {
             return;
@@ -589,7 +592,7 @@ class Woo_Integration
      */
     public function add_email_slot_info($order, $sent_to_admin, $plain_text, $email)
     {
-        $slot_info = $order->get_meta('_eva_slot_info');
+        $slot_info = $this->get_slot_info_for_order($order);
 
         if (empty($slot_info)) {
             return;
@@ -668,5 +671,60 @@ class Woo_Integration
         );
 
         return $schema;
+    }
+
+    /**
+     * Get slot info for an order.
+     * First tries to get from order meta, then builds from order item meta.
+     *
+     * @param WC_Order $order Order object.
+     * @return array Array of slot info.
+     */
+    private function get_slot_info_for_order($order)
+    {
+        // Try to get cached slot info from order meta.
+        $slot_info = $order->get_meta('_eva_slot_info');
+
+        if (!empty($slot_info) && is_array($slot_info)) {
+            return $slot_info;
+        }
+
+        // Build from order item meta (fallback for retroactive assignments).
+        $slot_info = array();
+
+        foreach ($order->get_items() as $item) {
+            $slot_id = $item->get_meta('_eva_slot_id');
+
+            if (!$slot_id) {
+                continue;
+            }
+
+            $slot_start = $item->get_meta('_eva_slot_start');
+            $slot_end = $item->get_meta('_eva_slot_end');
+            $slot_qty = $item->get_meta('_eva_slot_qty');
+
+            // If slot_start is not in item meta, try to get from slot repository.
+            if (!$slot_start) {
+                $slot = $this->slot_repository->get_slot((int) $slot_id);
+                if ($slot) {
+                    $slot_start = $slot['start_datetime'];
+                    $slot_end = $slot['end_datetime'];
+                }
+            }
+
+            if (!$slot_qty) {
+                $slot_qty = $item->get_quantity();
+            }
+
+            $slot_info[] = array(
+                'product'  => $item->get_name(),
+                'slot_id'  => $slot_id,
+                'start'    => $slot_start,
+                'end'      => $slot_end,
+                'quantity' => $slot_qty,
+            );
+        }
+
+        return $slot_info;
     }
 }

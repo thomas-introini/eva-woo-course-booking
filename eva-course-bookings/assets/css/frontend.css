@@ -246,14 +246,42 @@
   margin-bottom: 0;
 }
 
-/* Thank You Page */
+/* Thank You Page & Order View */
 .eva-thankyou-slot-info {
   margin-bottom: 30px;
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #4caf50;
 }
 
 .eva-thankyou-slot-info h2 {
   font-size: 1.3em;
-  margin-bottom: 15px;
+  margin: 0 0 15px 0;
+  color: #2e7d32;
+}
+
+.eva-thankyou-slot-info table {
+  background: #fff;
+  border-radius: 4px;
+}
+
+.eva-thankyou-slot-info table th,
+.eva-thankyou-slot-info table td {
+  padding: 12px 15px;
+}
+
+.eva-thankyou-slot-info table th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+.eva-thankyou-slot-info table td {
+  border-bottom: 1px solid #eee;
+}
+
+.eva-thankyou-slot-info table tr:last-child td {
+  border-bottom: none;
 }
 
 /* Responsive */
