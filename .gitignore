@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build artifacts
+*.zip
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker (optional - uncomment if you don't want to track docker data)
+# docker-data/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# WordPress (if accidentally copied)
+wp-config.php
+wp-content/uploads/
+wp-content/upgrade/
+wp-content/cache/
+wp-content/debug.log
+
+# PHPUnit
+.phpunit.result.cache
+phpunit.xml
+
+# Composer
+composer.lock
+
+# npm/yarn
+package-lock.json
+yarn.lock
+

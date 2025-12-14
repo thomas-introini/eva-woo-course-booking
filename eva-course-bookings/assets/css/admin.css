@@ -1,0 +1,386 @@
+/**
+ * Eva Course Bookings - Admin Styles
+ */
+
+/* Container */
+.eva-slots-container {
+  padding: 15px 0;
+}
+
+/* Form */
+.eva-add-slot-form {
+  background: #f9f9f9;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.eva-add-slot-form h4 {
+  margin: 0 0 15px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.eva-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: flex-end;
+}
+
+.eva-form-field {
+  flex: 1;
+  min-width: 120px;
+}
+
+.eva-form-field label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.eva-form-field input[type='text'],
+.eva-form-field input[type='time'],
+.eva-form-field input[type='number'] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.eva-form-submit {
+  flex: 0 0 auto;
+}
+
+/* Datepicker */
+.eva-datepicker {
+  cursor: pointer;
+}
+
+/* Slots List */
+.eva-slots-list h4 {
+  margin: 0 0 15px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#eva-slots-table {
+  border-collapse: collapse;
+}
+
+#eva-slots-table th,
+#eva-slots-table td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+#eva-slots-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+/* Status badges */
+.eva-status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.eva-status-badge.eva-status-open {
+  background: #d4edda;
+  color: #155724;
+}
+
+.eva-status-badge.eva-status-closed {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* Past slots */
+.eva-slot-past {
+  opacity: 0.6;
+}
+
+.eva-past-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: #6c757d;
+  color: #fff;
+  border-radius: 3px;
+  font-size: 10px;
+  margin-left: 5px;
+}
+
+/* No remaining */
+.eva-no-remaining {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+/* Actions */
+.eva-actions {
+  white-space: nowrap;
+}
+
+.eva-actions .button {
+  margin-right: 5px;
+}
+
+.eva-actions .button:last-child {
+  margin-right: 0;
+}
+
+/* Modal */
+.eva-modal {
+  display: none;
+  position: fixed;
+  z-index: 100000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.eva-modal-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 4px;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.eva-modal-content h3 {
+  margin: 0 0 20px 0;
+}
+
+.eva-modal-close {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.eva-modal-close:hover {
+  color: #000;
+}
+
+.eva-modal-actions {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #ddd;
+}
+
+/* Filters */
+.eva-filters {
+  background: #fff;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.eva-filters form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.eva-filters select,
+.eva-filters input[type='text'] {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+/* Bookings page */
+.eva-bookings-page .wp-list-table {
+  margin-top: 0;
+}
+
+/* Bulk enable page */
+.eva-bulk-enable-page .eva-bulk-actions {
+  margin-bottom: 15px;
+}
+
+.eva-bulk-enable-page .eva-bulk-actions button {
+  margin-right: 10px;
+}
+
+/* Notices */
+.eva-notice {
+  padding: 10px 15px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.eva-notice-success {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+}
+
+.eva-notice-error {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+}
+
+/* Self-test page */
+.eva-selftest-page .dashicons-yes {
+  color: #28a745;
+}
+
+.eva-selftest-page .dashicons-no {
+  color: #dc3545;
+}
+
+/* Order Slots Metabox */
+.eva-order-slots h4 {
+  margin: 15px 0 10px 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #ddd;
+}
+
+.eva-order-slots h4:first-child {
+  margin-top: 0;
+}
+
+.eva-order-slots .eva-slot-select {
+  width: 100%;
+  max-width: 300px;
+}
+
+.eva-order-slots .eva-assign-slot-btn,
+.eva-order-slots .eva-change-slot-btn {
+  white-space: nowrap;
+}
+
+.eva-order-slots .description {
+  margin: 5px 0 15px 0;
+  color: #666;
+}
+
+.eva-order-slots h4 {
+  margin: 20px 0 10px 0;
+}
+
+.eva-order-slots h4:first-child {
+  margin-top: 0;
+}
+
+.eva-order-slots table {
+  margin-bottom: 20px;
+}
+
+.eva-change-slot-select {
+  background: #f9f9f9;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.eva-change-slot-select select {
+  width: 100%;
+  margin-bottom: 5px;
+}
+
+.eva-order-slots .eva-slot-select,
+.eva-order-slots .eva-new-slot-select {
+  min-width: 250px;
+}
+
+/* Slot Bookings Page */
+.eva-slot-bookings-page h1 a {
+  text-decoration: none;
+  font-size: 14px;
+  color: #0073aa;
+}
+
+.eva-slot-bookings-page h1 a:hover {
+  color: #005a87;
+}
+
+.eva-slot-info-card {
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  border-radius: 4px;
+  padding: 15px 20px;
+  margin-bottom: 25px;
+  max-width: 600px;
+}
+
+.eva-slot-info-card .form-table th {
+  width: 150px;
+  padding: 10px 10px 10px 0;
+}
+
+.eva-slot-info-card .form-table td {
+  padding: 10px 0;
+}
+
+.eva-slot-bookings-page .order-status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #e5e5e5;
+}
+
+.eva-slot-bookings-page .order-status.status-completed,
+.eva-slot-bookings-page .order-status.status-processing {
+  background: #c6e1c6;
+  color: #5b841b;
+}
+
+.eva-slot-bookings-page .order-status.status-pending,
+.eva-slot-bookings-page .order-status.status-on-hold {
+  background: #f8dda7;
+  color: #94660c;
+}
+
+.eva-slot-bookings-page .order-status.status-cancelled,
+.eva-slot-bookings-page .order-status.status-refunded,
+.eva-slot-bookings-page .order-status.status-failed {
+  background: #eba3a3;
+  color: #761919;
+}
+
+.eva-slot-bookings-page h3 {
+  margin-top: 30px;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+  .eva-form-row {
+    flex-direction: column;
+  }
+
+  .eva-form-field {
+    min-width: 100%;
+  }
+
+  .eva-filters form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .eva-filters select,
+  .eva-filters input[type='text'] {
+    width: 100%;
+  }
+}

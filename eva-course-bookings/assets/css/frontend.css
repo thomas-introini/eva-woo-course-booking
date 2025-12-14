@@ -1,0 +1,269 @@
+/**
+ * Eva Course Bookings - Frontend Styles
+ */
+
+/* Slot Selection Container */
+.eva-slot-selection {
+  margin-bottom: 25px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.eva-slot-title {
+  margin: 0 0 20px 0;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #212529;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #007bff;
+}
+
+/* Form Fields */
+.eva-slot-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.eva-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eva-field label {
+  font-weight: 500;
+  font-size: 14px;
+  color: #495057;
+}
+
+/* Date Picker */
+.eva-datepicker {
+  width: fit-content;
+  padding: 12px 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 15px;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.eva-datepicker:hover {
+  border-color: #007bff;
+}
+
+.eva-datepicker:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+}
+
+/* jQuery UI Datepicker overrides */
+.ui-datepicker {
+  width: auto !important;
+  padding: 10px !important;
+  background: #fff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  border: none !important;
+}
+
+.ui-datepicker-header {
+  background: #007bff !important;
+  border: none !important;
+  border-radius: 6px 6px 0 0 !important;
+  padding: 10px !important;
+}
+
+.ui-datepicker-title {
+  color: #fff !important;
+}
+
+.ui-datepicker-prev,
+.ui-datepicker-next {
+  cursor: pointer !important;
+}
+
+.ui-datepicker-prev span,
+.ui-datepicker-next span {
+  background-image: none !important;
+}
+
+.ui-datepicker-prev:before,
+.ui-datepicker-next:before {
+  color: #fff;
+  font-weight: bold;
+}
+
+.ui-datepicker td {
+  padding: 2px !important;
+}
+
+.ui-datepicker td a,
+.ui-datepicker td span {
+  padding: 8px !important;
+  text-align: center !important;
+  border-radius: 4px !important;
+}
+
+.ui-datepicker td a.ui-state-default {
+  background: #f8f9fa !important;
+  border: none !important;
+  color: #212529 !important;
+}
+
+.ui-datepicker td a.ui-state-default:hover {
+  background: #e9ecef !important;
+}
+
+.ui-datepicker td a.ui-state-highlight {
+  background: #007bff !important;
+  color: #fff !important;
+}
+
+.ui-datepicker td.ui-datepicker-unselectable span {
+  color: #ccc !important;
+  background: transparent !important;
+}
+
+/* Time Slots */
+.eva-time-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.eva-time-slot {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 20px;
+  background: #fff;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 100px;
+}
+
+.eva-time-slot:hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.eva-time-slot.selected {
+  background: #007bff;
+  border-color: #007bff;
+  color: #fff;
+}
+
+.eva-time-slot-time {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Loading */
+.eva-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #6c757d;
+}
+
+.eva-loading::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e9ecef;
+  border-top-color: #007bff;
+  border-radius: 50%;
+  margin-right: 10px;
+  animation: eva-spin 1s linear infinite;
+}
+
+@keyframes eva-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Selected Summary */
+.eva-selected-summary {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 6px;
+  padding: 15px;
+}
+
+.eva-summary-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.eva-summary-icon {
+  font-size: 18px;
+  color: #28a745;
+}
+
+.eva-summary-text {
+  font-weight: 500;
+  color: #155724;
+}
+
+/* Validation Message */
+.eva-validation-message {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 12px 15px;
+  color: #856404;
+  font-size: 14px;
+}
+
+/* No Slots Notice */
+.eva-no-slots-notice {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.eva-no-slots-notice p {
+  margin: 0 0 10px 0;
+  color: #721c24;
+}
+
+.eva-no-slots-notice p:last-child {
+  margin-bottom: 0;
+}
+
+/* Thank You Page */
+.eva-thankyou-slot-info {
+  margin-bottom: 30px;
+}
+
+.eva-thankyou-slot-info h2 {
+  font-size: 1.3em;
+  margin-bottom: 15px;
+}
+
+/* Responsive */
+@media screen and (max-width: 600px) {
+  .eva-slot-selection {
+    padding: 15px;
+  }
+
+  .eva-time-slot {
+    flex: 1 1 calc(50% - 5px);
+    min-width: auto;
+  }
+}
