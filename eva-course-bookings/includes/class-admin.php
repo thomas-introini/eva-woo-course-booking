@@ -55,12 +55,16 @@ class Admin
         add_action('wp_ajax_eva_admin_assign_slot', array($this, 'ajax_assign_slot_to_order_item'));
         add_action('wp_ajax_eva_admin_change_slot', array($this, 'ajax_change_order_item_slot'));
         add_action('wp_ajax_eva_admin_get_product_slots', array($this, 'ajax_get_product_slots'));
+        add_action('wp_ajax_eva_admin_save_settings', array($this, 'ajax_save_settings'));
 
         // Self-test page.
         add_action('admin_menu', array($this, 'add_selftest_page'), 99);
 
         // Order edit screen metabox.
         add_action('add_meta_boxes', array($this, 'add_order_slots_metabox'));
+
+        // Register settings.
+        add_action('admin_init', array($this, 'register_settings'));
     }
 
     /**
@@ -87,6 +91,10 @@ class Admin
             $is_order_edit = true;
         }
 
+        // Check if we're on the settings tab.
+        $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'prenotazioni';
+        $is_settings_tab = $is_plugin_page && 'impostazioni' === $current_tab;
+
         if (! $is_product_edit && ! $is_plugin_page && ! $is_order_edit) {
             return;
         }
@@ -94,6 +102,12 @@ class Admin
         // Enqueue WordPress bundled datepicker.
         wp_enqueue_script('jquery-ui-datepicker');
         wp_enqueue_style('jquery-ui-datepicker-style', 'https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css', array(), '1.13.2');
+
+        // Enqueue color picker for settings tab.
+        if ($is_settings_tab) {
+            wp_enqueue_style('wp-color-picker');
+            wp_enqueue_script('wp-color-picker');
+        }
 
         // Enqueue admin CSS.
         wp_enqueue_style(
@@ -404,34 +418,86 @@ class Admin
     {
         add_submenu_page(
             'woocommerce',
-            'Prenotazioni corsi',
-            'Prenotazioni corsi',
+            'Corsi',
+            'Corsi',
             'manage_woocommerce',
             'eva-course-bookings',
-            array($this, 'render_bookings_page')
-        );
-
-        add_submenu_page(
-            'woocommerce',
-            'Abilita corsi in blocco',
-            'Abilita corsi',
-            'manage_woocommerce',
-            'eva-course-bulk-enable',
-            array($this, 'render_bulk_enable_page')
+            array($this, 'render_main_page')
         );
     }
 
     /**
-     * Render the bookings admin page.
+     * Get current tab.
+     *
+     * @return string
      */
-    public function render_bookings_page()
+    private function get_current_tab()
+    {
+        return isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'prenotazioni';
+    }
+
+    /**
+     * Render the main page with tabs.
+     */
+    public function render_main_page()
+    {
+        $current_tab = $this->get_current_tab();
+        $tabs = array(
+            'prenotazioni' => 'Prenotazioni',
+            'corsi'        => 'Corsi abilitati',
+            'impostazioni' => 'Impostazioni',
+        );
+
+    ?>
+        <div class="wrap eva-main-page">
+            <h1>Corsi</h1>
+
+            <nav class="nav-tab-wrapper eva-tab-wrapper">
+                <?php foreach ($tabs as $tab_id => $tab_name) : ?>
+                    <?php
+                    $tab_url = add_query_arg(array(
+                        'page' => 'eva-course-bookings',
+                        'tab'  => $tab_id,
+                    ), admin_url('admin.php'));
+                    $active_class = ($current_tab === $tab_id) ? 'nav-tab-active' : '';
+                    ?>
+                    <a href="<?php echo esc_url($tab_url); ?>" class="nav-tab <?php echo esc_attr($active_class); ?>">
+                        <?php echo esc_html($tab_name); ?>
+                    </a>
+                <?php endforeach; ?>
+            </nav>
+
+            <div class="eva-tab-content">
+                <?php
+                switch ($current_tab) {
+                    case 'corsi':
+                        $this->render_bulk_enable_content();
+                        break;
+                    case 'impostazioni':
+                        $this->render_settings_content();
+                        break;
+                    case 'prenotazioni':
+                    default:
+                        $this->render_bookings_content();
+                        break;
+                }
+                ?>
+            </div>
+        </div>
+    <?php
+    }
+
+    /**
+     * Render the bookings tab content.
+     */
+    public function render_bookings_content()
     {
         // Check if viewing a specific slot's bookings.
         $view = isset($_GET['view']) ? sanitize_text_field($_GET['view']) : '';
         $slot_id = isset($_GET['slot_id']) ? absint($_GET['slot_id']) : 0;
 
         if ('slot' === $view && $slot_id) {
-            $this->render_slot_bookings_page($slot_id);
+            $this->render_slot_bookings_content($slot_id);
             return;
         }
 
@@ -451,13 +517,12 @@ class Admin
         // Get products for filter dropdown.
         $products = $this->get_course_products();
     ?>
-        <div class="wrap eva-bookings-page">
-            <h1>Prenotazioni corsi</h1>
-
+        <div class="eva-bookings-content">
             <!-- Filters -->
             <div class="eva-filters">
                 <form method="get" action="">
                     <input type="hidden" name="page" value="eva-course-bookings">
+                    <input type="hidden" name="tab" value="prenotazioni">
 
                     <select name="product_id">
                         <option value="">Tutti i prodotti</option>
@@ -481,7 +546,7 @@ class Admin
                         value="<?php echo esc_attr($filters['date_to']); ?>">
 
                     <button type="submit" class="button">Filtra</button>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings')); ?>" class="button">Reset</a>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni')); ?>" class="button">Reset</a>
                 </form>
             </div>
 
@@ -536,16 +601,16 @@ class Admin
     }
 
     /**
-     * Render the slot bookings detail page.
+     * Render the slot bookings detail content.
      *
      * @param int $slot_id Slot ID.
      */
-    private function render_slot_bookings_page($slot_id)
+    private function render_slot_bookings_content($slot_id)
     {
         $slot = $this->slot_repository->get_slot($slot_id);
 
         if (!$slot) {
-            echo '<div class="wrap"><h1>Slot non trovato</h1><p><a href="' . esc_url(admin_url('admin.php?page=eva-course-bookings')) . '">← Torna alla lista</a></p></div>';
+            echo '<div class="eva-slot-not-found"><p>Slot non trovato. <a href="' . esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni')) . '">← Torna alla lista</a></p></div>';
             return;
         }
 
@@ -557,10 +622,10 @@ class Admin
         // Get all orders with items booked for this slot.
         $bookings = $this->get_orders_for_slot($slot_id);
     ?>
-        <div class="wrap eva-slot-bookings-page">
-            <h1>
-                <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings')); ?>">← Prenotazioni corsi</a>
-            </h1>
+        <div class="eva-slot-bookings-content">
+            <p>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni')); ?>" class="button">← Torna alla lista</a>
+            </p>
 
             <h2>Dettaglio slot</h2>
 
@@ -677,7 +742,7 @@ class Admin
 
                 <h3>Esporta lista partecipanti</h3>
                 <p>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&view=slot&slot_id=' . $slot_id . '&export=csv')); ?>"
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni&view=slot&slot_id=' . $slot_id . '&export=csv')); ?>"
                         class="button">
                         Scarica CSV
                     </a>
@@ -863,7 +928,7 @@ class Admin
             </td>
             <td>
                 <?php if ($slot['booked'] > 0) : ?>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&view=slot&slot_id=' . $slot['id'])); ?>"
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni&view=slot&slot_id=' . $slot['id'])); ?>"
                         class="button button-small">
                         Vedi prenotazioni
                     </a>
@@ -912,9 +977,9 @@ class Admin
     }
 
     /**
-     * Render bulk enable page.
+     * Render bulk enable tab content.
      */
-    public function render_bulk_enable_page()
+    public function render_bulk_enable_content()
     {
         // Get all products.
         $products = get_posts(
@@ -927,8 +992,7 @@ class Admin
             )
         );
     ?>
-        <div class="wrap eva-bulk-enable-page">
-            <h1>Abilita prenotazione corsi in blocco</h1>
+        <div class="eva-bulk-enable-content">
             <p>Seleziona i prodotti per i quali vuoi abilitare la prenotazione corsi.</p>
 
             <form id="eva-bulk-enable-form">
@@ -977,6 +1041,375 @@ class Admin
             </form>
         </div>
     <?php
+    }
+
+    /**
+     * Register plugin settings.
+     */
+    public function register_settings()
+    {
+        register_setting('eva_course_bookings_settings', 'eva_course_bookings_colors', array(
+            'type' => 'array',
+            'sanitize_callback' => array($this, 'sanitize_color_settings'),
+            'default' => self::get_default_colors(),
+        ));
+    }
+
+    /**
+     * Get default color settings.
+     *
+     * @return array
+     */
+    public static function get_default_colors()
+    {
+        return array(
+            'box_background'      => '#f8f9fa',
+            'box_background_end'  => '#e9ecef',
+            'box_border'          => '#dee2e6',
+            'title_color'         => '#212529',
+            'title_border'        => '#007bff',
+            'label_color'         => '#495057',
+            'input_border'        => '#e9ecef',
+            'input_border_hover'  => '#007bff',
+            'input_focus_shadow'  => 'rgba(0, 123, 255, 0.15)',
+            'slot_background'     => '#ffffff',
+            'slot_border'         => '#e9ecef',
+            'slot_hover_border'   => '#007bff',
+            'slot_selected_bg'    => '#007bff',
+            'slot_selected_text'  => '#ffffff',
+            'slot_time_color'     => '#212529',
+            'summary_background'  => '#d4edda',
+            'summary_border'      => '#c3e6cb',
+            'summary_icon'        => '#28a745',
+            'summary_text'        => '#155724',
+            'validation_bg'       => '#fff3cd',
+            'validation_border'   => '#ffc107',
+            'validation_text'     => '#856404',
+        );
+    }
+
+    /**
+     * Sanitize color settings.
+     *
+     * @param array $input Input values.
+     * @return array Sanitized values.
+     */
+    public function sanitize_color_settings($input)
+    {
+        $defaults = self::get_default_colors();
+        $output = array();
+
+        foreach ($defaults as $key => $default) {
+            if (isset($input[$key])) {
+                // Sanitize hex color or rgba.
+                $color = sanitize_text_field($input[$key]);
+                if (preg_match('/^#[a-fA-F0-9]{6}$/', $color) || preg_match('/^rgba?\(/', $color)) {
+                    $output[$key] = $color;
+                } else {
+                    $output[$key] = $default;
+                }
+            } else {
+                $output[$key] = $default;
+            }
+        }
+
+        return $output;
+    }
+
+    /**
+     * Get current color settings.
+     *
+     * @return array
+     */
+    public static function get_color_settings()
+    {
+        $colors = get_option('eva_course_bookings_colors', array());
+        return wp_parse_args($colors, self::get_default_colors());
+    }
+
+    /**
+     * Render settings tab content.
+     */
+    public function render_settings_content()
+    {
+        $colors = self::get_color_settings();
+    ?>
+        <div class="eva-settings-content">
+            <form method="post" action="" id="eva-settings-form">
+                <?php wp_nonce_field('eva_settings_nonce', 'eva_settings_nonce'); ?>
+
+                <h2>Colori selettore data</h2>
+                <p class="description">Personalizza i colori del box di selezione data/ora nella pagina prodotto.</p>
+
+                <div class="eva-settings-sections">
+                    <!-- Box Container -->
+                    <div class="eva-settings-section">
+                        <h3>Contenitore principale</h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="box_background">Sfondo (inizio gradiente)</label></th>
+                                <td>
+                                    <input type="text" id="box_background" name="colors[box_background]"
+                                        value="<?php echo esc_attr($colors['box_background']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="box_background_end">Sfondo (fine gradiente)</label></th>
+                                <td>
+                                    <input type="text" id="box_background_end" name="colors[box_background_end]"
+                                        value="<?php echo esc_attr($colors['box_background_end']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="box_border">Bordo</label></th>
+                                <td>
+                                    <input type="text" id="box_border" name="colors[box_border]"
+                                        value="<?php echo esc_attr($colors['box_border']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Title -->
+                    <div class="eva-settings-section">
+                        <h3>Titolo</h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="title_color">Colore titolo</label></th>
+                                <td>
+                                    <input type="text" id="title_color" name="colors[title_color]"
+                                        value="<?php echo esc_attr($colors['title_color']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="title_border">Bordo inferiore titolo</label></th>
+                                <td>
+                                    <input type="text" id="title_border" name="colors[title_border]"
+                                        value="<?php echo esc_attr($colors['title_border']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Input Fields -->
+                    <div class="eva-settings-section">
+                        <h3>Campi input</h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="label_color">Colore etichette</label></th>
+                                <td>
+                                    <input type="text" id="label_color" name="colors[label_color]"
+                                        value="<?php echo esc_attr($colors['label_color']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="input_border">Bordo input</label></th>
+                                <td>
+                                    <input type="text" id="input_border" name="colors[input_border]"
+                                        value="<?php echo esc_attr($colors['input_border']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="input_border_hover">Bordo input (hover)</label></th>
+                                <td>
+                                    <input type="text" id="input_border_hover" name="colors[input_border_hover]"
+                                        value="<?php echo esc_attr($colors['input_border_hover']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Time Slots -->
+                    <div class="eva-settings-section">
+                        <h3>Slot orari</h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="slot_background">Sfondo slot</label></th>
+                                <td>
+                                    <input type="text" id="slot_background" name="colors[slot_background]"
+                                        value="<?php echo esc_attr($colors['slot_background']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="slot_border">Bordo slot</label></th>
+                                <td>
+                                    <input type="text" id="slot_border" name="colors[slot_border]"
+                                        value="<?php echo esc_attr($colors['slot_border']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="slot_hover_border">Bordo slot (hover)</label></th>
+                                <td>
+                                    <input type="text" id="slot_hover_border" name="colors[slot_hover_border]"
+                                        value="<?php echo esc_attr($colors['slot_hover_border']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="slot_time_color">Colore testo orario</label></th>
+                                <td>
+                                    <input type="text" id="slot_time_color" name="colors[slot_time_color]"
+                                        value="<?php echo esc_attr($colors['slot_time_color']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="slot_selected_bg">Sfondo slot selezionato</label></th>
+                                <td>
+                                    <input type="text" id="slot_selected_bg" name="colors[slot_selected_bg]"
+                                        value="<?php echo esc_attr($colors['slot_selected_bg']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="slot_selected_text">Testo slot selezionato</label></th>
+                                <td>
+                                    <input type="text" id="slot_selected_text" name="colors[slot_selected_text]"
+                                        value="<?php echo esc_attr($colors['slot_selected_text']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Summary -->
+                    <div class="eva-settings-section">
+                        <h3>Riepilogo selezione</h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="summary_background">Sfondo</label></th>
+                                <td>
+                                    <input type="text" id="summary_background" name="colors[summary_background]"
+                                        value="<?php echo esc_attr($colors['summary_background']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="summary_border">Bordo</label></th>
+                                <td>
+                                    <input type="text" id="summary_border" name="colors[summary_border]"
+                                        value="<?php echo esc_attr($colors['summary_border']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="summary_icon">Colore icona</label></th>
+                                <td>
+                                    <input type="text" id="summary_icon" name="colors[summary_icon]"
+                                        value="<?php echo esc_attr($colors['summary_icon']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="summary_text">Colore testo</label></th>
+                                <td>
+                                    <input type="text" id="summary_text" name="colors[summary_text]"
+                                        value="<?php echo esc_attr($colors['summary_text']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Validation Message -->
+                    <div class="eva-settings-section">
+                        <h3>Messaggio di validazione</h3>
+                        <table class="form-table">
+                            <tr>
+                                <th><label for="validation_bg">Sfondo</label></th>
+                                <td>
+                                    <input type="text" id="validation_bg" name="colors[validation_bg]"
+                                        value="<?php echo esc_attr($colors['validation_bg']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="validation_border">Bordo</label></th>
+                                <td>
+                                    <input type="text" id="validation_border" name="colors[validation_border]"
+                                        value="<?php echo esc_attr($colors['validation_border']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="validation_text">Colore testo</label></th>
+                                <td>
+                                    <input type="text" id="validation_text" name="colors[validation_text]"
+                                        value="<?php echo esc_attr($colors['validation_text']); ?>" class="eva-color-picker">
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <p class="submit">
+                    <button type="submit" class="button button-primary" id="eva-save-settings">Salva impostazioni</button>
+                    <button type="button" class="button" id="eva-reset-colors">Ripristina predefiniti</button>
+                </p>
+            </form>
+        </div>
+
+        <script>
+            jQuery(document).ready(function($) {
+                // Initialize color pickers.
+                $('.eva-color-picker').wpColorPicker();
+
+                // Save settings via AJAX.
+                $('#eva-settings-form').on('submit', function(e) {
+                    e.preventDefault();
+
+                    var formData = $(this).serialize();
+                    formData += '&action=eva_admin_save_settings';
+                    formData += '&nonce=' + evaAdminData.nonce;
+
+                    $('#eva-save-settings').prop('disabled', true).text('Salvataggio...');
+
+                    $.ajax({
+                        url: evaAdminData.ajaxUrl,
+                        type: 'POST',
+                        data: formData,
+                        success: function(response) {
+                            if (response.success) {
+                                alert(response.data.message);
+                            } else {
+                                alert('Errore: ' + response.data.message);
+                            }
+                        },
+                        error: function() {
+                            alert('Errore di comunicazione con il server.');
+                        },
+                        complete: function() {
+                            $('#eva-save-settings').prop('disabled', false).text('Salva impostazioni');
+                        }
+                    });
+                });
+
+                // Reset to defaults.
+                $('#eva-reset-colors').on('click', function() {
+                    if (!confirm('Sei sicuro di voler ripristinare i colori predefiniti?')) {
+                        return;
+                    }
+
+                    var defaults = <?php echo wp_json_encode(self::get_default_colors()); ?>;
+
+                    $.each(defaults, function(key, value) {
+                        var $input = $('input[name="colors[' + key + ']"]');
+                        $input.val(value);
+                        $input.wpColorPicker('color', value);
+                    });
+                });
+            });
+        </script>
+    <?php
+    }
+
+    /**
+     * AJAX: Save settings.
+     */
+    public function ajax_save_settings()
+    {
+        check_ajax_referer('eva_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(array('message' => 'Permesso negato.'));
+        }
+
+        $colors = isset($_POST['colors']) ? (array) $_POST['colors'] : array();
+        $sanitized = $this->sanitize_color_settings($colors);
+
+        update_option('eva_course_bookings_colors', $sanitized);
+
+        wp_send_json_success(array('message' => 'Impostazioni salvate con successo.'));
     }
 
     /**

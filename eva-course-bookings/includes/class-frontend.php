@@ -70,6 +70,10 @@ class Frontend
             EVA_COURSE_BOOKINGS_VERSION
         );
 
+        // Add custom color CSS.
+        $custom_css = $this->generate_custom_color_css();
+        wp_add_inline_style('eva-course-bookings-frontend', $custom_css);
+
         // Enqueue frontend JS.
         wp_enqueue_script(
             'eva-course-bookings-frontend',
@@ -222,5 +226,96 @@ class Frontend
         }
 
         return $purchasable;
+    }
+
+    /**
+     * Generate custom color CSS based on settings.
+     *
+     * @return string CSS string.
+     */
+    private function generate_custom_color_css()
+    {
+        $colors = Admin::get_color_settings();
+
+        $css = "
+/* Eva Course Bookings - Custom Colors */
+.eva-slot-selection {
+    background: linear-gradient(135deg, {$colors['box_background']} 0%, {$colors['box_background_end']} 100%);
+    border-color: {$colors['box_border']};
+}
+
+.eva-slot-title {
+    color: {$colors['title_color']};
+    border-bottom-color: {$colors['title_border']};
+}
+
+.eva-field label {
+    color: {$colors['label_color']};
+}
+
+.eva-datepicker {
+    border-color: {$colors['input_border']};
+}
+
+.eva-datepicker:hover {
+    border-color: {$colors['input_border_hover']};
+}
+
+.eva-datepicker:focus {
+    border-color: {$colors['input_border_hover']};
+    box-shadow: 0 0 0 3px {$colors['input_focus_shadow']};
+}
+
+.eva-time-slot {
+    background: {$colors['slot_background']};
+    border-color: {$colors['slot_border']};
+}
+
+.eva-time-slot:hover {
+    border-color: {$colors['slot_hover_border']};
+    box-shadow: 0 2px 8px {$colors['input_focus_shadow']};
+}
+
+.eva-time-slot.selected {
+    background: {$colors['slot_selected_bg']};
+    border-color: {$colors['slot_selected_bg']};
+    color: {$colors['slot_selected_text']};
+}
+
+.eva-time-slot-time {
+    color: {$colors['slot_time_color']};
+}
+
+.eva-time-slot.selected .eva-time-slot-time {
+    color: {$colors['slot_selected_text']};
+}
+
+.eva-selected-summary {
+    background: {$colors['summary_background']};
+    border-color: {$colors['summary_border']};
+}
+
+.eva-summary-icon {
+    color: {$colors['summary_icon']};
+}
+
+.eva-summary-text {
+    color: {$colors['summary_text']};
+}
+
+.eva-validation-message {
+    background: {$colors['validation_bg']};
+    border-color: {$colors['validation_border']};
+    color: {$colors['validation_text']};
+}
+
+/* Datepicker highlight color */
+.ui-datepicker td a.ui-state-highlight {
+    background: {$colors['slot_selected_bg']} !important;
+    color: {$colors['slot_selected_text']} !important;
+}
+";
+
+        return $css;
     }
 }
