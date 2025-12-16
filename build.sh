@@ -8,7 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_NAME="eva-course-bookings"
 VERSION=$(grep -o "Version: [0-9.]*" "$SCRIPT_DIR/$PLUGIN_NAME/$PLUGIN_NAME.php" | cut -d' ' -f2)
-OUTPUT_FILE="$SCRIPT_DIR/${PLUGIN_NAME}.zip"
+OUTPUT_FILE="$SCRIPT_DIR/${PLUGIN_NAME}-v${VERSION}.zip"
 
 echo "🔨 Building $PLUGIN_NAME v$VERSION..."
 
