@@ -43,6 +43,9 @@ class Frontend
 
         // Disable add to cart for courses without slot selection.
         add_filter('woocommerce_is_purchasable', array($this, 'check_purchasable'), 10, 2);
+
+        // Replace add to cart button with redirect button on shop page for course products.
+        add_filter('woocommerce_loop_add_to_cart_link', array($this, 'replace_shop_add_to_cart_button'), 10, 3);
     }
 
     /**
@@ -338,5 +341,38 @@ class Frontend
 ";
 
         return $css;
+    }
+
+    /**
+     * Replace add to cart button with redirect button on shop page for course products.
+     *
+     * @param string      $link    Add to cart link HTML.
+     * @param WC_Product  $product Product object.
+     * @param array       $args    Additional arguments.
+     * @return string Modified link HTML.
+     */
+    public function replace_shop_add_to_cart_button($link, $product, $args = array())
+    {
+        // Only modify on shop/archive pages, not on single product page.
+        if (is_product()) {
+            return $link;
+        }
+
+        // Check if this is a course product.
+        if (! Plugin::is_course_enabled($product->get_id())) {
+            return $link;
+        }
+
+        // Replace with redirect button.
+        $product_url = get_permalink($product->get_id());
+        $button_text = 'Iscriviti';
+        $button_class = isset($args['class']) ? $args['class'] : 'button';
+
+        return sprintf(
+            '<a href="%s" class="%s">%s</a>',
+            esc_url($product_url),
+            esc_attr($button_class),
+            esc_html($button_text)
+        );
     }
 }
