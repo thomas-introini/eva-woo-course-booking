@@ -1083,21 +1083,50 @@ class Admin
     {
         global $wpdb;
 
-        // Count all course items with no slot assigned (includes legacy items).
-        $count = $wpdb->get_var(
-            "SELECT COUNT(DISTINCT oi.order_item_id)
-            FROM {$wpdb->prefix}woocommerce_order_items AS oi
-            INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_prod
-                ON oim_prod.order_item_id = oi.order_item_id AND oim_prod.meta_key = '_product_id'
-            INNER JOIN {$wpdb->postmeta} AS pm_course
-                ON pm_course.post_id = oim_prod.meta_value
-                AND pm_course.meta_key = '_eva_course_enabled'
-                AND pm_course.meta_value = 'yes'
-            LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_slot
-                ON oim_slot.order_item_id = oi.order_item_id AND oim_slot.meta_key = '_eva_slot_id'
-            WHERE oi.order_item_type = 'line_item'
-              AND oim_slot.order_item_id IS NULL"
-        );
+        // Check if HPOS is enabled.
+        $is_hpos_enabled = class_exists('\Automattic\WooCommerce\Utilities\OrderUtil')
+            && \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+
+        if ($is_hpos_enabled) {
+            // HPOS mode: join with wc_orders table.
+            $count = $wpdb->get_var(
+                "SELECT COUNT(DISTINCT oi.order_item_id)
+                FROM {$wpdb->prefix}woocommerce_order_items AS oi
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_prod
+                    ON oim_prod.order_item_id = oi.order_item_id AND oim_prod.meta_key = '_product_id'
+                INNER JOIN {$wpdb->postmeta} AS pm_course
+                    ON pm_course.post_id = oim_prod.meta_value
+                    AND pm_course.meta_key = '_eva_course_enabled'
+                    AND pm_course.meta_value = 'yes'
+                LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_slot
+                    ON oim_slot.order_item_id = oi.order_item_id AND oim_slot.meta_key = '_eva_slot_id'
+                INNER JOIN {$wpdb->prefix}wc_orders AS wc_orders
+                    ON wc_orders.id = oi.order_id
+                    AND wc_orders.status IN ('wc-processing', 'wc-completed')
+                WHERE oi.order_item_type = 'line_item'
+                  AND oim_slot.order_item_id IS NULL"
+            );
+        } else {
+            // Legacy mode: join with posts table.
+            $count = $wpdb->get_var(
+                "SELECT COUNT(DISTINCT oi.order_item_id)
+                FROM {$wpdb->prefix}woocommerce_order_items AS oi
+                INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_prod
+                    ON oim_prod.order_item_id = oi.order_item_id AND oim_prod.meta_key = '_product_id'
+                INNER JOIN {$wpdb->postmeta} AS pm_course
+                    ON pm_course.post_id = oim_prod.meta_value
+                    AND pm_course.meta_key = '_eva_course_enabled'
+                    AND pm_course.meta_value = 'yes'
+                LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_slot
+                    ON oim_slot.order_item_id = oi.order_item_id AND oim_slot.meta_key = '_eva_slot_id'
+                INNER JOIN {$wpdb->posts} AS p
+                    ON p.ID = oi.order_id
+                    AND p.post_type IN ('shop_order', 'shop_order_refund')
+                    AND p.post_status IN ('wc-processing', 'wc-completed')
+                WHERE oi.order_item_type = 'line_item'
+                  AND oim_slot.order_item_id IS NULL"
+            );
+        }
 
         return absint($count);
     }
