@@ -1075,7 +1075,7 @@ class Admin
     }
 
     /**
-     * Get count of pending bookings.
+     * Get count of unassigned course items (pending + legacy).
      *
      * @return int
      */
@@ -1083,24 +1083,27 @@ class Admin
     {
         global $wpdb;
 
-        // Count order items with pending booking flag.
+        // Count all course items with no slot assigned (includes legacy items).
         $count = $wpdb->get_var(
             "SELECT COUNT(DISTINCT oi.order_item_id)
-            FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim
-            INNER JOIN {$wpdb->prefix}woocommerce_order_items AS oi ON oim.order_item_id = oi.order_item_id
-            WHERE oim.meta_key = '_eva_pending_booking' AND oim.meta_value = 'yes'
-            AND NOT EXISTS (
-                SELECT 1 FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim2
-                WHERE oim2.order_item_id = oim.order_item_id
-                AND oim2.meta_key = '_eva_slot_id'
-            )"
+            FROM {$wpdb->prefix}woocommerce_order_items AS oi
+            INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_prod
+                ON oim_prod.order_item_id = oi.order_item_id AND oim_prod.meta_key = '_product_id'
+            INNER JOIN {$wpdb->postmeta} AS pm_course
+                ON pm_course.post_id = oim_prod.meta_value
+                AND pm_course.meta_key = '_eva_course_enabled'
+                AND pm_course.meta_value = 'yes'
+            LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_slot
+                ON oim_slot.order_item_id = oi.order_item_id AND oim_slot.meta_key = '_eva_slot_id'
+            WHERE oi.order_item_type = 'line_item'
+              AND oim_slot.order_item_id IS NULL"
         );
 
         return absint($count);
     }
 
     /**
-     * Get pending bookings (order items without slot assigned).
+     * Get unassigned course items (pending + legacy).
      *
      * @return array
      */
@@ -1108,41 +1111,46 @@ class Admin
     {
         global $wpdb;
 
-        // Get order items with pending booking flag that don't have a slot assigned.
-        $order_item_ids = $wpdb->get_col(
-            "SELECT oim.order_item_id
-            FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim
-            INNER JOIN {$wpdb->prefix}woocommerce_order_items AS oi ON oim.order_item_id = oi.order_item_id
-            WHERE oim.meta_key = '_eva_pending_booking' AND oim.meta_value = 'yes'
-            AND NOT EXISTS (
-                SELECT 1 FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim2
-                WHERE oim2.order_item_id = oim.order_item_id
-                AND oim2.meta_key = '_eva_slot_id'
-            )
+        // Get all course items without a slot assigned, plus whether they are marked as pending booking.
+        $rows = $wpdb->get_results(
+            "SELECT oi.order_id, oi.order_item_id, oim_pending.meta_value AS pending_value
+            FROM {$wpdb->prefix}woocommerce_order_items AS oi
+            INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_prod
+                ON oim_prod.order_item_id = oi.order_item_id AND oim_prod.meta_key = '_product_id'
+            INNER JOIN {$wpdb->postmeta} AS pm_course
+                ON pm_course.post_id = oim_prod.meta_value
+                AND pm_course.meta_key = '_eva_course_enabled'
+                AND pm_course.meta_value = 'yes'
+            LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_slot
+                ON oim_slot.order_item_id = oi.order_item_id AND oim_slot.meta_key = '_eva_slot_id'
+            LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS oim_pending
+                ON oim_pending.order_item_id = oi.order_item_id AND oim_pending.meta_key = '_eva_pending_booking'
+            WHERE oi.order_item_type = 'line_item'
+              AND oim_slot.order_item_id IS NULL
             ORDER BY oi.order_id DESC"
         );
 
-        if (empty($order_item_ids)) {
+        if (empty($rows)) {
             return array();
         }
 
         $pending = array();
 
-        foreach ($order_item_ids as $item_id) {
-            // Get order ID.
-            $order_id = $wpdb->get_var(
-                $wpdb->prepare(
-                    "SELECT order_id FROM {$wpdb->prefix}woocommerce_order_items WHERE order_item_id = %d",
-                    $item_id
-                )
-            );
+        foreach ($rows as $row) {
+            $order_id = absint($row->order_id);
+            $item_id  = absint($row->order_item_id);
 
-            if (!$order_id) {
+            if (! $order_id || ! $item_id) {
                 continue;
             }
 
             $order = wc_get_order($order_id);
             if (!$order) {
+                continue;
+            }
+
+            // Skip irrelevant statuses.
+            if (in_array($order->get_status(), array('cancelled', 'refunded', 'failed'), true)) {
                 continue;
             }
 
@@ -1154,6 +1162,7 @@ class Admin
 
             $product_id = $item->get_product_id();
             $quantity = $item->get_meta('_eva_slot_qty') ?: $item->get_quantity();
+            $is_pending_booking = ('yes' === (string) $row->pending_value);
 
             $pending[] = array(
                 'order_id'       => $order->get_id(),
@@ -1167,6 +1176,7 @@ class Admin
                 'product_name'   => $item->get_name(),
                 'quantity'       => (int) $quantity,
                 'edit_url'       => $order->get_edit_order_url(),
+                'pending_booking' => $is_pending_booking,
             );
         }
 
@@ -1182,8 +1192,9 @@ class Admin
     ?>
         <div class="eva-pending-bookings-content">
             <p class="description">
-                Questi ordini contengono corsi acquistati senza una data selezionata (regalo o prenotazione futura).
-                Utilizza questa pagina per assegnare uno slot a ciascun articolo.
+                Qui trovi tutti i corsi acquistati senza uno slot assegnato.
+                Include sia gli acquisti "Regalo / prenotazione futura" sia gli ordini "Legacy" effettuati prima dell'attivazione del plugin.
+                Clicca su "Assegna data" per aprire l'ordine e assegnare lo slot dal metabox.
             </p>
 
             <?php if (empty($pending)) : ?>
@@ -1199,6 +1210,7 @@ class Admin
                             <th>Data ordine</th>
                             <th>Cliente</th>
                             <th>Corso</th>
+                            <th>Tipo</th>
                             <th>Partecipanti</th>
                             <th>Stato ordine</th>
                             <th>Azioni</th>
@@ -1228,6 +1240,13 @@ class Admin
                                     <a href="<?php echo esc_url(get_edit_post_link($item['product_id'])); ?>">
                                         <?php echo esc_html($item['product_name']); ?>
                                     </a>
+                                </td>
+                                <td>
+                                    <?php if (! empty($item['pending_booking'])) : ?>
+                                        <span class="eva-pending-tag" title="Acquistato come regalo o prenotazione futura">🎁 Regalo</span>
+                                    <?php else : ?>
+                                        <span class="eva-legacy-tag" title="Ordine precedente senza slot assegnato">📋 Legacy</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td><strong><?php echo esc_html($item['quantity']); ?></strong></td>
                                 <td>
