@@ -9,6 +9,7 @@
     selectedSlotId: null,
     selectedSlotStart: null,
     selectedSlotEnd: null,
+    skipSlotEnabled: false,
 
     init: function () {
       if (!$('#eva-slot-selection').length) {
@@ -73,6 +74,11 @@
     bindEvents: function () {
       var self = this;
 
+      // Skip slot checkbox
+      $('#eva-skip-slot-checkbox').on('change', function () {
+        self.onSkipSlotChanged($(this).is(':checked'));
+      });
+
       // Time slot selection
       $(document).on('click', '.eva-time-slot', function () {
         self.onTimeSlotSelected($(this));
@@ -90,6 +96,45 @@
           return false;
         }
       });
+    },
+
+    onSkipSlotChanged: function (isChecked) {
+      this.skipSlotEnabled = isChecked;
+
+      if (isChecked) {
+        // Hide date/time selection
+        $('#eva-date-field').hide();
+        $('#eva-time-container').hide();
+        $('#eva-selected-summary').hide();
+        $('#eva-validation-message').hide();
+
+        // Show skip slot summary
+        $('#eva-skip-slot-summary').show();
+
+        // Set hidden field
+        $('#eva-skip-slot').val('1');
+
+        // Clear any previous slot selection
+        this.clearSlotSelection();
+
+        // Enable add to cart
+        this.enableAddToCart();
+
+        // Remove max quantity restriction
+        $('.quantity input.qty').removeAttr('max');
+      } else {
+        // Show date/time selection
+        $('#eva-date-field').show();
+
+        // Hide skip slot summary
+        $('#eva-skip-slot-summary').hide();
+
+        // Clear hidden field
+        $('#eva-skip-slot').val('');
+
+        // Disable add to cart (until slot is selected)
+        this.disableAddToCart();
+      }
     },
 
     formatDateForAPI: function (date) {
@@ -256,6 +301,11 @@
     },
 
     validateSelection: function () {
+      // If skip slot is enabled, always valid
+      if (this.skipSlotEnabled) {
+        return true;
+      }
+
       if (!this.selectedSlotId) {
         $('#eva-validation-message').show();
 

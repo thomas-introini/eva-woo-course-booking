@@ -132,9 +132,22 @@ class Frontend
                 <input type="hidden" name="eva_slot_id" id="eva-slot-id" value="">
                 <input type="hidden" name="eva_slot_start" id="eva-slot-start" value="">
                 <input type="hidden" name="eva_slot_end" id="eva-slot-end" value="">
+                <input type="hidden" name="eva_skip_slot" id="eva-skip-slot" value="">
+
+                <!-- Skip slot option for gifts -->
+                <div class="eva-skip-slot-option">
+                    <label class="eva-skip-slot-label">
+                        <input type="checkbox" id="eva-skip-slot-checkbox" class="eva-skip-slot-checkbox">
+                        <span class="eva-skip-slot-text">Non scegliere la data ora (regalo o prenotazione futura)</span>
+                    </label>
+                    <p class="eva-skip-slot-description">
+                        Seleziona questa opzione se stai acquistando per qualcun altro o se preferisci scegliere la data in seguito.
+                        Potrai prenotare la data contattandoci dopo l'acquisto.
+                    </p>
+                </div>
 
                 <!-- Date picker -->
-                <div class="eva-field eva-date-field">
+                <div class="eva-field eva-date-field" id="eva-date-field">
                     <label for="eva-date-picker">Data *</label>
                     <input type="text" id="eva-date-picker" class="eva-datepicker"
                         placeholder="Seleziona una data" readonly>
@@ -153,6 +166,14 @@ class Frontend
                     <div class="eva-summary-content">
                         <span class="eva-summary-icon">✓</span>
                         <span class="eva-summary-text" id="eva-summary-text"></span>
+                    </div>
+                </div>
+
+                <!-- Skip slot confirmation -->
+                <div class="eva-skip-slot-summary" id="eva-skip-slot-summary" style="display: none;">
+                    <div class="eva-summary-content">
+                        <span class="eva-summary-icon">🎁</span>
+                        <span class="eva-summary-text">Data da definire dopo l'acquisto</span>
                     </div>
                 </div>
 

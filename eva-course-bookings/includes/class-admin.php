@@ -442,10 +442,16 @@ class Admin
     public function render_main_page()
     {
         $current_tab = $this->get_current_tab();
+
+        // Get count of pending bookings for badge.
+        $pending_count = $this->get_pending_bookings_count();
+        $pending_badge = $pending_count > 0 ? ' <span class="eva-pending-badge">' . $pending_count . '</span>' : '';
+
         $tabs = array(
-            'prenotazioni' => 'Prenotazioni',
-            'corsi'        => 'Corsi abilitati',
-            'impostazioni' => 'Impostazioni',
+            'prenotazioni'  => 'Prenotazioni',
+            'da_prenotare'  => 'Da prenotare' . $pending_badge,
+            'corsi'         => 'Corsi abilitati',
+            'impostazioni'  => 'Impostazioni',
         );
 
     ?>
@@ -462,7 +468,7 @@ class Admin
                     $active_class = ($current_tab === $tab_id) ? 'nav-tab-active' : '';
                     ?>
                     <a href="<?php echo esc_url($tab_url); ?>" class="nav-tab <?php echo esc_attr($active_class); ?>">
-                        <?php echo esc_html($tab_name); ?>
+                        <?php echo wp_kses($tab_name, array('span' => array('class' => array()))); ?>
                     </a>
                 <?php endforeach; ?>
             </nav>
@@ -470,6 +476,9 @@ class Admin
             <div class="eva-tab-content">
                 <?php
                 switch ($current_tab) {
+                    case 'da_prenotare':
+                        $this->render_pending_bookings_content();
+                        break;
                     case 'corsi':
                         $this->render_bulk_enable_content();
                         break;
@@ -1039,6 +1048,181 @@ class Admin
                     </tbody>
                 </table>
             </form>
+        </div>
+    <?php
+    }
+
+    /**
+     * Get count of pending bookings.
+     *
+     * @return int
+     */
+    private function get_pending_bookings_count()
+    {
+        global $wpdb;
+
+        // Count order items with pending booking flag.
+        $count = $wpdb->get_var(
+            "SELECT COUNT(DISTINCT oi.order_item_id)
+            FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim
+            INNER JOIN {$wpdb->prefix}woocommerce_order_items AS oi ON oim.order_item_id = oi.order_item_id
+            WHERE oim.meta_key = '_eva_pending_booking' AND oim.meta_value = 'yes'
+            AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim2
+                WHERE oim2.order_item_id = oim.order_item_id
+                AND oim2.meta_key = '_eva_slot_id'
+            )"
+        );
+
+        return absint($count);
+    }
+
+    /**
+     * Get pending bookings (order items without slot assigned).
+     *
+     * @return array
+     */
+    private function get_pending_bookings()
+    {
+        global $wpdb;
+
+        // Get order items with pending booking flag that don't have a slot assigned.
+        $order_item_ids = $wpdb->get_col(
+            "SELECT oim.order_item_id
+            FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim
+            INNER JOIN {$wpdb->prefix}woocommerce_order_items AS oi ON oim.order_item_id = oi.order_item_id
+            WHERE oim.meta_key = '_eva_pending_booking' AND oim.meta_value = 'yes'
+            AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->prefix}woocommerce_order_itemmeta AS oim2
+                WHERE oim2.order_item_id = oim.order_item_id
+                AND oim2.meta_key = '_eva_slot_id'
+            )
+            ORDER BY oi.order_id DESC"
+        );
+
+        if (empty($order_item_ids)) {
+            return array();
+        }
+
+        $pending = array();
+
+        foreach ($order_item_ids as $item_id) {
+            // Get order ID.
+            $order_id = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT order_id FROM {$wpdb->prefix}woocommerce_order_items WHERE order_item_id = %d",
+                    $item_id
+                )
+            );
+
+            if (!$order_id) {
+                continue;
+            }
+
+            $order = wc_get_order($order_id);
+            if (!$order) {
+                continue;
+            }
+
+            // Get item.
+            $item = $order->get_item($item_id);
+            if (!$item) {
+                continue;
+            }
+
+            $product_id = $item->get_product_id();
+            $quantity = $item->get_meta('_eva_slot_qty') ?: $item->get_quantity();
+
+            $pending[] = array(
+                'order_id'       => $order->get_id(),
+                'order_date'     => $order->get_date_created() ? $order->get_date_created()->format('d/m/Y H:i') : '',
+                'order_status'   => $order->get_status(),
+                'customer_name'  => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+                'customer_email' => $order->get_billing_email(),
+                'customer_phone' => $order->get_billing_phone(),
+                'item_id'        => $item_id,
+                'product_id'     => $product_id,
+                'product_name'   => $item->get_name(),
+                'quantity'       => (int) $quantity,
+                'edit_url'       => $order->get_edit_order_url(),
+            );
+        }
+
+        return $pending;
+    }
+
+    /**
+     * Render pending bookings tab content.
+     */
+    public function render_pending_bookings_content()
+    {
+        $pending = $this->get_pending_bookings();
+    ?>
+        <div class="eva-pending-bookings-content">
+            <p class="description">
+                Questi ordini contengono corsi acquistati senza una data selezionata (regalo o prenotazione futura).
+                Utilizza questa pagina per assegnare uno slot a ciascun articolo.
+            </p>
+
+            <?php if (empty($pending)) : ?>
+                <div class="eva-no-pending">
+                    <p><strong>Nessuna prenotazione in attesa.</strong></p>
+                    <p>Tutti i corsi acquistati hanno già una data assegnata.</p>
+                </div>
+            <?php else : ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Data ordine</th>
+                            <th>Cliente</th>
+                            <th>Corso</th>
+                            <th>Partecipanti</th>
+                            <th>Stato ordine</th>
+                            <th>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pending as $item) : ?>
+                            <tr>
+                                <td>
+                                    <a href="<?php echo esc_url($item['edit_url']); ?>">
+                                        <strong>#<?php echo esc_html($item['order_id']); ?></strong>
+                                    </a>
+                                </td>
+                                <td><?php echo esc_html($item['order_date']); ?></td>
+                                <td>
+                                    <?php echo esc_html($item['customer_name']); ?>
+                                    <br>
+                                    <a href="mailto:<?php echo esc_attr($item['customer_email']); ?>">
+                                        <?php echo esc_html($item['customer_email']); ?>
+                                    </a>
+                                    <?php if ($item['customer_phone']) : ?>
+                                        <br>
+                                        <small><?php echo esc_html($item['customer_phone']); ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <a href="<?php echo esc_url(get_edit_post_link($item['product_id'])); ?>">
+                                        <?php echo esc_html($item['product_name']); ?>
+                                    </a>
+                                </td>
+                                <td><strong><?php echo esc_html($item['quantity']); ?></strong></td>
+                                <td>
+                                    <span class="order-status status-<?php echo esc_attr($item['order_status']); ?>">
+                                        <?php echo esc_html(wc_get_order_status_name($item['order_status'])); ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="<?php echo esc_url($item['edit_url']); ?>" class="button button-primary button-small">
+                                        Assegna data
+                                    </a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
     <?php
     }
@@ -1838,10 +2022,12 @@ class Admin
                 );
             } else {
                 // Needs a slot.
+                $is_pending = 'yes' === $item->get_meta('_eva_pending_booking');
                 $items_needing_slots[] = array(
-                    'item_id'    => $item_id,
-                    'item'       => $item,
-                    'product_id' => $product_id,
+                    'item_id'         => $item_id,
+                    'item'            => $item,
+                    'product_id'      => $product_id,
+                    'pending_booking' => $is_pending,
                 );
             }
         }
@@ -1947,6 +2133,7 @@ class Admin
                         <tr>
                             <th>Prodotto</th>
                             <th>Quantità</th>
+                            <th>Tipo</th>
                             <th>Seleziona slot</th>
                             <th>Azione</th>
                         </tr>
@@ -1959,6 +2146,13 @@ class Admin
                             <tr data-item-id="<?php echo esc_attr($data['item_id']); ?>" data-product-id="<?php echo esc_attr($data['product_id']); ?>">
                                 <td><?php echo esc_html($data['item']->get_name()); ?></td>
                                 <td><?php echo esc_html($data['item']->get_quantity()); ?></td>
+                                <td>
+                                    <?php if (! empty($data['pending_booking'])) : ?>
+                                        <span class="eva-pending-tag" title="Acquistato come regalo o prenotazione futura">🎁 Regalo</span>
+                                    <?php else : ?>
+                                        <span class="eva-legacy-tag" title="Ordine esistente senza slot">📋 Legacy</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if (empty($slots)) : ?>
                                         <span style="color: orange;">Nessuno slot disponibile. <a href="<?php echo esc_url(get_edit_post_link($data['product_id'])); ?>">Crea slot</a></span>
@@ -2202,6 +2396,9 @@ class Admin
         $item->update_meta_data('_eva_slot_end', $slot_end);
         $item->update_meta_data('_eva_slot_qty', $quantity);
         $item->update_meta_data('_eva_seats_reserved', 'yes');
+
+        // Remove pending booking flag if it was set.
+        $item->delete_meta_data('_eva_pending_booking');
         $item->save_meta_data();
 
         // Update order meta with aggregate info.

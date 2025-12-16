@@ -104,6 +104,14 @@ class Woo_Integration
             return $passed;
         }
 
+        // Check if skip slot is enabled (gift purchase / booking later).
+        $skip_slot = isset($_POST['eva_skip_slot']) && '1' === $_POST['eva_skip_slot'];
+
+        if ($skip_slot) {
+            // Allow purchase without slot - will be assigned later by admin.
+            return $passed;
+        }
+
         // Get slot ID from POST.
         $slot_id = isset($_POST['eva_slot_id']) ? absint($_POST['eva_slot_id']) : 0;
 
@@ -184,6 +192,15 @@ class Woo_Integration
             return $cart_item_data;
         }
 
+        // Check if skip slot is enabled (gift purchase / booking later).
+        $skip_slot = isset($_POST['eva_skip_slot']) && '1' === $_POST['eva_skip_slot'];
+
+        if ($skip_slot) {
+            $cart_item_data['eva_pending_booking'] = true;
+            $cart_item_data['unique_key'] = md5($product_id . '_pending_' . time() . '_' . wp_rand());
+            return $cart_item_data;
+        }
+
         $slot_id    = isset($_POST['eva_slot_id']) ? absint($_POST['eva_slot_id']) : 0;
         $slot_start = isset($_POST['eva_slot_start']) ? sanitize_text_field(wp_unslash($_POST['eva_slot_start'])) : '';
         $slot_end   = isset($_POST['eva_slot_end']) ? sanitize_text_field(wp_unslash($_POST['eva_slot_end'])) : '';
@@ -209,6 +226,15 @@ class Woo_Integration
      */
     public function display_cart_item_data($item_data, $cart_item)
     {
+        // Check if this is a pending booking (gift / booking later).
+        if (isset($cart_item['eva_pending_booking']) && $cart_item['eva_pending_booking']) {
+            $item_data[] = array(
+                'key'   => 'Data corso',
+                'value' => 'Da definire (regalo o prenotazione futura)',
+            );
+            return $item_data;
+        }
+
         if (isset($cart_item['eva_slot_start']) && $cart_item['eva_slot_start']) {
             $formatted_date = Plugin::format_datetime_italian($cart_item['eva_slot_start']);
 
@@ -239,6 +265,11 @@ class Woo_Integration
      */
     public function cart_item_quantity_limits($product_quantity, $cart_item_key, $cart_item)
     {
+        // Skip for pending bookings - no quantity limit.
+        if (isset($cart_item['eva_pending_booking']) && $cart_item['eva_pending_booking']) {
+            return $product_quantity;
+        }
+
         if (! isset($cart_item['eva_slot_id'])) {
             return $product_quantity;
         }
@@ -273,6 +304,11 @@ class Woo_Integration
     public function validate_cart_items()
     {
         foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+            // Skip validation for pending bookings.
+            if (isset($cart_item['eva_pending_booking']) && $cart_item['eva_pending_booking']) {
+                continue;
+            }
+
             if (! isset($cart_item['eva_slot_id'])) {
                 continue;
             }
@@ -331,6 +367,11 @@ class Woo_Integration
     public function validate_block_checkout($order, $request)
     {
         foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+            // Skip validation for pending bookings.
+            if (isset($cart_item['eva_pending_booking']) && $cart_item['eva_pending_booking']) {
+                continue;
+            }
+
             if (! isset($cart_item['eva_slot_id'])) {
                 continue;
             }
@@ -353,6 +394,13 @@ class Woo_Integration
      */
     public function add_order_item_meta($item, $cart_item_key, $values, $order)
     {
+        // Check if this is a pending booking (gift / booking later).
+        if (isset($values['eva_pending_booking']) && $values['eva_pending_booking']) {
+            $item->add_meta_data('_eva_pending_booking', 'yes', true);
+            $item->add_meta_data('_eva_slot_qty', $values['quantity'], true);
+            return;
+        }
+
         if (isset($values['eva_slot_id'])) {
             $item->add_meta_data('_eva_slot_id', $values['eva_slot_id'], true);
             $item->add_meta_data('_eva_slot_start', $values['eva_slot_start'], true);
@@ -506,6 +554,8 @@ class Woo_Integration
                 return 'Ora fine';
             case '_eva_slot_qty':
                 return 'Partecipanti';
+            case '_eva_pending_booking':
+                return 'Stato prenotazione';
         }
 
         return $display_key;
@@ -528,6 +578,10 @@ class Woo_Integration
         if ('_eva_slot_end' === $meta->key && $meta->value) {
             $dt = \DateTime::createFromFormat('Y-m-d H:i:s', $meta->value);
             return $dt ? $dt->format('H:i') : $meta->value;
+        }
+
+        if ('_eva_pending_booking' === $meta->key) {
+            return 'Da definire (regalo o prenotazione futura)';
         }
 
         return $display_value;
@@ -563,15 +617,22 @@ class Woo_Integration
                         <tr>
                             <td><?php echo esc_html($info['product']); ?></td>
                             <td>
-                                <?php
-                                echo esc_html(Plugin::format_datetime_italian($info['start']));
-                                if (! empty($info['end'])) {
-                                    $end_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $info['end']);
-                                    if ($end_dt) {
-                                        echo ' - ' . esc_html($end_dt->format('H:i'));
+                                <?php if (! empty($info['pending_booking'])) : ?>
+                                    <em>Da definire (regalo o prenotazione futura)</em>
+                                    <br><small>Ti contatteremo per definire la data del corso.</small>
+                                <?php elseif (! empty($info['start'])) : ?>
+                                    <?php
+                                    echo esc_html(Plugin::format_datetime_italian($info['start']));
+                                    if (! empty($info['end'])) {
+                                        $end_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $info['end']);
+                                        if ($end_dt) {
+                                            echo ' - ' . esc_html($end_dt->format('H:i'));
+                                        }
                                     }
-                                }
-                                ?>
+                                    ?>
+                                <?php else : ?>
+                                    -
+                                <?php endif; ?>
                             </td>
                             <td><?php echo esc_html($info['quantity']); ?></td>
                         </tr>
@@ -605,14 +666,19 @@ class Woo_Integration
 
             foreach ($slot_info as $info) {
                 echo esc_html($info['product']) . "\n";
-                echo 'Data corso: ' . esc_html(Plugin::format_datetime_italian($info['start']));
-                if (! empty($info['end'])) {
-                    $end_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $info['end']);
-                    if ($end_dt) {
-                        echo ' - ' . esc_html($end_dt->format('H:i'));
+                if (! empty($info['pending_booking'])) {
+                    echo "Data corso: Da definire (regalo o prenotazione futura)\n";
+                    echo "Ti contatteremo per definire la data del corso.\n";
+                } elseif (! empty($info['start'])) {
+                    echo 'Data corso: ' . esc_html(Plugin::format_datetime_italian($info['start']));
+                    if (! empty($info['end'])) {
+                        $end_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $info['end']);
+                        if ($end_dt) {
+                            echo ' - ' . esc_html($end_dt->format('H:i'));
+                        }
                     }
+                    echo "\n";
                 }
-                echo "\n";
                 echo 'Partecipanti: ' . esc_html($info['quantity']) . "\n\n";
             }
         } else {
@@ -631,15 +697,22 @@ class Woo_Integration
                         <tr>
                             <td style="padding: 10px;"><?php echo esc_html($info['product']); ?></td>
                             <td style="padding: 10px;">
-                                <?php
-                                echo esc_html(Plugin::format_datetime_italian($info['start']));
-                                if (! empty($info['end'])) {
-                                    $end_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $info['end']);
-                                    if ($end_dt) {
-                                        echo ' - ' . esc_html($end_dt->format('H:i'));
+                                <?php if (! empty($info['pending_booking'])) : ?>
+                                    <em>Da definire (regalo o prenotazione futura)</em>
+                                    <br><small>Ti contatteremo per definire la data del corso.</small>
+                                <?php elseif (! empty($info['start'])) : ?>
+                                    <?php
+                                    echo esc_html(Plugin::format_datetime_italian($info['start']));
+                                    if (! empty($info['end'])) {
+                                        $end_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $info['end']);
+                                        if ($end_dt) {
+                                            echo ' - ' . esc_html($end_dt->format('H:i'));
+                                        }
                                     }
-                                }
-                                ?>
+                                    ?>
+                                <?php else : ?>
+                                    -
+                                <?php endif; ?>
                             </td>
                             <td style="padding: 10px;"><?php echo esc_html($info['quantity']); ?></td>
                         </tr>
@@ -693,7 +766,33 @@ class Woo_Integration
         $slot_info = array();
 
         foreach ($order->get_items() as $item) {
+            $product_id = $item->get_product_id();
+
+            // Check if this is a course product.
+            if (! Plugin::is_course_enabled($product_id)) {
+                continue;
+            }
+
             $slot_id = $item->get_meta('_eva_slot_id');
+            $pending_booking = $item->get_meta('_eva_pending_booking');
+            $slot_qty = $item->get_meta('_eva_slot_qty');
+
+            if (!$slot_qty) {
+                $slot_qty = $item->get_quantity();
+            }
+
+            // Check if this is a pending booking.
+            if ('yes' === $pending_booking && !$slot_id) {
+                $slot_info[] = array(
+                    'product'         => $item->get_name(),
+                    'slot_id'         => null,
+                    'start'           => null,
+                    'end'             => null,
+                    'quantity'        => $slot_qty,
+                    'pending_booking' => true,
+                );
+                continue;
+            }
 
             if (!$slot_id) {
                 continue;
@@ -701,7 +800,6 @@ class Woo_Integration
 
             $slot_start = $item->get_meta('_eva_slot_start');
             $slot_end = $item->get_meta('_eva_slot_end');
-            $slot_qty = $item->get_meta('_eva_slot_qty');
 
             // If slot_start is not in item meta, try to get from slot repository.
             if (!$slot_start) {
@@ -710,10 +808,6 @@ class Woo_Integration
                     $slot_start = $slot['start_datetime'];
                     $slot_end = $slot['end_datetime'];
                 }
-            }
-
-            if (!$slot_qty) {
-                $slot_qty = $item->get_quantity();
             }
 
             $slot_info[] = array(

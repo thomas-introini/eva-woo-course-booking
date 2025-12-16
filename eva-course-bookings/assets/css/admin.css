@@ -42,12 +42,99 @@
   padding: 20px;
 }
 
+/* Pending badge */
+.eva-pending-badge {
+  display: inline-block;
+  background: #d63638;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
 /* Tab content areas */
 .eva-bookings-content,
 .eva-bulk-enable-content,
 .eva-settings-content,
-.eva-slot-bookings-content {
+.eva-slot-bookings-content,
+.eva-pending-bookings-content {
   /* Content styling within tabs */
+}
+
+/* Pending bookings content */
+.eva-pending-bookings-content .description {
+  margin-bottom: 20px;
+  color: #666;
+}
+
+.eva-no-pending {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 4px;
+  padding: 20px;
+  text-align: center;
+  color: #155724;
+}
+
+.eva-no-pending p {
+  margin: 0 0 5px 0;
+}
+
+.eva-no-pending p:last-child {
+  margin-bottom: 0;
+}
+
+.eva-pending-bookings-content .order-status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #e5e5e5;
+}
+
+.eva-pending-bookings-content .order-status.status-completed,
+.eva-pending-bookings-content .order-status.status-processing {
+  background: #c6e1c6;
+  color: #5b841b;
+}
+
+.eva-pending-bookings-content .order-status.status-pending,
+.eva-pending-bookings-content .order-status.status-on-hold {
+  background: #f8dda7;
+  color: #94660c;
+}
+
+.eva-pending-bookings-content .order-status.status-cancelled,
+.eva-pending-bookings-content .order-status.status-refunded,
+.eva-pending-bookings-content .order-status.status-failed {
+  background: #eba3a3;
+  color: #761919;
+}
+
+/* Pending and Legacy Tags */
+.eva-pending-tag,
+.eva-legacy-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.eva-pending-tag {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffcc80;
+}
+
+.eva-legacy-tag {
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #90caf9;
 }
 
 .eva-slot-bookings-content h2 {
