@@ -65,6 +65,88 @@ class Admin
 
         // Register settings.
         add_action('admin_init', array($this, 'register_settings'));
+
+        // Handle CSV export early (before any output).
+        add_action('admin_init', array($this, 'handle_csv_export'));
+    }
+
+    /**
+     * Handle CSV export before any output.
+     * This must run early to send proper headers.
+     */
+    public function handle_csv_export()
+    {
+        // Check if we're on the right page with export parameter.
+        if (!isset($_GET['page']) || 'eva-course-bookings' !== $_GET['page']) {
+            return;
+        }
+
+        if (!isset($_GET['export']) || 'csv' !== $_GET['export']) {
+            return;
+        }
+
+        if (!isset($_GET['slot_id'])) {
+            return;
+        }
+
+        if (!current_user_can('manage_woocommerce')) {
+            return;
+        }
+
+        $slot_id = absint($_GET['slot_id']);
+        $slot = $this->slot_repository->get_slot($slot_id);
+
+        if (!$slot) {
+            return;
+        }
+
+        // Get bookings for this slot.
+        $bookings = $this->get_orders_for_slot($slot_id);
+
+        // Generate CSV.
+        $product = get_post($slot['product_id']);
+        $product_name = $product ? sanitize_file_name($product->post_title) : 'corso';
+        $date_str = date('Y-m-d', strtotime($slot['start_datetime']));
+
+        $filename = sprintf('prenotazioni-%s-%s.csv', $product_name, $date_str);
+
+        // Send headers.
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $output = fopen('php://output', 'w');
+
+        // BOM for Excel UTF-8.
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+        // Header row.
+        fputcsv($output, array(
+            'Ordine',
+            'Data Ordine',
+            'Nome',
+            'Email',
+            'Telefono',
+            'Partecipanti',
+            'Stato Ordine'
+        ), ';');
+
+        // Data rows.
+        foreach ($bookings as $booking) {
+            fputcsv($output, array(
+                '#' . $booking['order_id'],
+                $booking['order_date'],
+                $booking['customer_name'],
+                $booking['customer_email'],
+                $booking['customer_phone'],
+                $booking['quantity'],
+                wc_get_order_status_name($booking['order_status'])
+            ), ';');
+        }
+
+        fclose($output);
+        exit;
     }
 
     /**
@@ -756,7 +838,6 @@ class Admin
                         Scarica CSV
                     </a>
                 </p>
-                <?php $this->maybe_export_csv($slot_id, $bookings); ?>
             <?php endif; ?>
         </div>
     <?php
@@ -834,65 +915,6 @@ class Admin
         });
 
         return $bookings;
-    }
-
-    /**
-     * Export bookings as CSV if requested.
-     *
-     * @param int   $slot_id  Slot ID.
-     * @param array $bookings Bookings data.
-     */
-    private function maybe_export_csv($slot_id, $bookings)
-    {
-        if (!isset($_GET['export']) || 'csv' !== $_GET['export']) {
-            return;
-        }
-
-        if (!current_user_can('manage_woocommerce')) {
-            return;
-        }
-
-        $slot = $this->slot_repository->get_slot($slot_id);
-        $product = get_post($slot['product_id']);
-        $product_name = $product ? sanitize_file_name($product->post_title) : 'corso';
-        $date_str = date('Y-m-d', strtotime($slot['start_datetime']));
-
-        $filename = sprintf('prenotazioni-%s-%s.csv', $product_name, $date_str);
-
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=' . $filename);
-
-        $output = fopen('php://output', 'w');
-
-        // BOM for Excel UTF-8.
-        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
-
-        // Header row.
-        fputcsv($output, array(
-            'Ordine',
-            'Data Ordine',
-            'Nome',
-            'Email',
-            'Telefono',
-            'Partecipanti',
-            'Stato Ordine'
-        ), ';');
-
-        // Data rows.
-        foreach ($bookings as $booking) {
-            fputcsv($output, array(
-                '#' . $booking['order_id'],
-                $booking['order_date'],
-                $booking['customer_name'],
-                $booking['customer_email'],
-                $booking['customer_phone'],
-                $booking['quantity'],
-                wc_get_order_status_name($booking['order_status'])
-            ), ';');
-        }
-
-        fclose($output);
-        exit;
     }
 
     /**
