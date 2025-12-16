@@ -371,7 +371,7 @@ class Slot_Repository
      */
     public function get_available_dates(int $product_id)
     {
-        $slots = $this->get_slots_for_product($product_id, 'open', true);
+        $slots = $this->get_slots_for_product($product_id, 'open', false);
         $dates = array();
 
         foreach ($slots as $slot) {
@@ -393,7 +393,8 @@ class Slot_Repository
      */
     public function get_slots_for_date(int $product_id, string $date)
     {
-        $slots = $this->get_slots_for_product($product_id, 'open', true);
+        // Get all slots (including unavailable ones) so users can see all options.
+        $slots = $this->get_slots_for_product($product_id, 'open', false);
         $result = array();
 
         foreach ($slots as $slot) {

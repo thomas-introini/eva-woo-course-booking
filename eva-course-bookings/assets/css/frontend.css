@@ -166,6 +166,30 @@
   font-weight: 600;
 }
 
+/* Unavailable slots */
+.eva-time-slot-unavailable {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f5f5f5;
+  border-color: #d0d0d0;
+  position: relative;
+}
+
+.eva-time-slot-unavailable:hover {
+  border-color: #d0d0d0;
+  transform: none;
+  box-shadow: none;
+}
+
+.eva-time-slot-unavailable-label {
+  display: block;
+  font-size: 12px;
+  color: #dc3545;
+  font-weight: 500;
+  margin-top: 4px;
+  text-align: center;
+}
+
 /* Loading */
 .eva-loading {
   display: flex;

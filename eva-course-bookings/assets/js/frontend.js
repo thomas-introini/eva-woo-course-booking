@@ -132,8 +132,17 @@
         // Clear hidden field
         $('#eva-skip-slot').val('');
 
-        // Disable add to cart (until slot is selected)
-        this.disableAddToCart();
+        // Restore time slots container logic.
+        // If a date was already selected, reload and show available time slots.
+        // Otherwise keep the time container hidden until the user picks a date.
+        var existingDate = $('#eva-date-picker').val();
+        if (existingDate) {
+          this.onDateSelected(existingDate);
+        } else {
+          $('#eva-time-container').hide();
+          $('#eva-time-slots').empty();
+          this.disableAddToCart();
+        }
       }
     },
 
@@ -189,6 +198,7 @@
 
     renderTimeSlots: function (slots) {
       var html = '';
+      var self = this;
 
       slots.forEach(function (slot) {
         var timeDisplay = slot.time;
@@ -196,8 +206,18 @@
           timeDisplay += ' - ' + slot.end_time;
         }
 
+        var isUnavailable = slot.remaining <= 0;
+        var unavailableClass = isUnavailable
+          ? ' eva-time-slot-unavailable'
+          : '';
+        var unavailableLabel = isUnavailable
+          ? '<span class="eva-time-slot-unavailable-label">Posti esauriti</span>'
+          : '';
+
         html +=
-          '<div class="eva-time-slot" data-slot-id="' +
+          '<div class="eva-time-slot' +
+          unavailableClass +
+          '" data-slot-id="' +
           slot.id +
           '" ' +
           'data-slot-start="' +
@@ -212,6 +232,7 @@
           '<span class="eva-time-slot-time">' +
           timeDisplay +
           '</span>' +
+          unavailableLabel +
           '</div>';
       });
 
@@ -219,6 +240,11 @@
     },
 
     onTimeSlotSelected: function ($slot) {
+      // Prevent selection of unavailable slots
+      if ($slot.hasClass('eva-time-slot-unavailable')) {
+        return;
+      }
+
       // Remove previous selection
       $('.eva-time-slot').removeClass('selected');
 
@@ -308,6 +334,29 @@
 
       if (!this.selectedSlotId) {
         $('#eva-validation-message').show();
+
+        // Scroll to selection
+        $('html, body').animate(
+          {
+            scrollTop: $('#eva-slot-selection').offset().top - 100,
+          },
+          300
+        );
+
+        return false;
+      }
+
+      // Check if selected slot is unavailable
+      var $selectedSlot = $(
+        '.eva-time-slot[data-slot-id="' + this.selectedSlotId + '"]'
+      );
+      if (
+        $selectedSlot.length &&
+        $selectedSlot.hasClass('eva-time-slot-unavailable')
+      ) {
+        $('#eva-validation-message')
+          .text('Non puoi selezionare un orario con posti esauriti.')
+          .show();
 
         // Scroll to selection
         $('html, body').animate(
