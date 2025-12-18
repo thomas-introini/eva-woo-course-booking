@@ -4,7 +4,7 @@
  * Plugin Name: Eva Course Bookings
  * Plugin URI: https://github.com/eva-course-bookings
  * Description: Plugin per la gestione di prenotazioni di corsi con date e orari.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Thomas Introini
  * Author URI: https://thomasintroini.it
  * Text Domain: eva-course-bookings
