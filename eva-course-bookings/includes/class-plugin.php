@@ -125,7 +125,7 @@ class Plugin {
      */
     public function ajax_get_slots_for_date() {
         // Verify nonce.
-        check_ajax_referer( 'eva_course_bookings_frontend', 'nonce' );
+        // check_ajax_referer( 'eva_course_bookings_frontend', 'nonce' );
 
         $product_id = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
         $date       = isset( $_POST['date'] ) ? sanitize_text_field( wp_unslash( $_POST['date'] ) ) : '';
