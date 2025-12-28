@@ -198,9 +198,9 @@ class Frontend
         $available_dates = $this->slot_repository->get_available_dates($post->ID);
         $available_dates = $this->filter_dates_by_lead_time($available_dates);
 
-        if (empty($available_dates)) {
-            $this->render_no_slots_notice();
-            return;
+        $has_dates = ! empty($available_dates);
+        if (! $has_dates) {
+            $this->render_no_slots_notice(false);
         }
 
 ?>
@@ -226,8 +226,14 @@ class Frontend
                     </p>
                 </div>
 
+                <?php if (! $has_dates) : ?>
+                    <p class="eva-skip-slot-description" style="margin: 0;">
+                        Al momento non ci sono date disponibili. Puoi procedere all'acquisto e scegliere la data in seguito.
+                    </p>
+                <?php endif; ?>
+
                 <!-- Date picker -->
-                <div class="eva-field eva-date-field" id="eva-date-field">
+                <div class="eva-field eva-date-field" id="eva-date-field" <?php echo $has_dates ? '' : 'style="display: none;"'; ?>>
                     <label for="eva-date-picker">Data *</label>
                     <input type="text" id="eva-date-picker" class="eva-datepicker"
                         placeholder="Seleziona una data" readonly>
@@ -729,14 +735,7 @@ class Frontend
             return $purchasable;
         }
 
-        // Check if there are available slots.
-        $available_dates = $this->slot_repository->get_available_dates($product->get_id());
-        $available_dates = $this->filter_dates_by_lead_time($available_dates);
-
-        if (empty($available_dates)) {
-            return false;
-        }
-
+        // Allow purchase even without slots so customers can choose later.
         return $purchasable;
     }
 
