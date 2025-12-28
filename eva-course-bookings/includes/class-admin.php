@@ -1179,7 +1179,7 @@ class Admin
             }
 
             // Skip irrelevant statuses.
-            if (in_array($order->get_status(), array('cancelled', 'refunded', 'failed'), true)) {
+            if (in_array($order->get_status(), array('cancelled', 'refunded', 'failed', 'draft'), true)) {
                 continue;
             }
 
