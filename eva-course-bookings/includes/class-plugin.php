@@ -116,6 +116,15 @@ class Plugin {
         }
 
         $dates = $this->slot_repository->get_available_dates( $product_id );
+        $min_date = self::get_min_booking_date();
+        $dates = array_values(
+            array_filter(
+                $dates,
+                function( $date ) use ( $min_date ) {
+                    return $date >= $min_date;
+                }
+            )
+        );
 
         wp_send_json_success( array( 'dates' => $dates ) );
     }
@@ -137,6 +146,10 @@ class Plugin {
         // Validate date format.
         if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
             wp_send_json_error( array( 'message' => 'Formato data non valido.' ) );
+        }
+
+        if ( ! self::is_date_allowed( $date ) ) {
+            wp_send_json_error( array( 'message' => 'La data selezionata non è più disponibile.' ) );
         }
 
         $slots = $this->slot_repository->get_slots_for_date( $product_id, $date );
@@ -190,6 +203,60 @@ class Plugin {
     }
 
     /**
+     * Get booking lead time in days.
+     *
+     * @return int
+     */
+    public static function get_lead_time_days(): int {
+        $settings = get_option( 'eva_course_bookings_settings', array() );
+        $days = isset( $settings['lead_time_days'] ) ? absint( $settings['lead_time_days'] ) : 0;
+
+        return max( 0, $days );
+    }
+
+    /**
+     * Get minimum booking date in Y-m-d format.
+     *
+     * @return string
+     */
+    public static function get_min_booking_date(): string {
+        $days = self::get_lead_time_days();
+        $timestamp = current_time( 'timestamp' ) + ( $days * DAY_IN_SECONDS );
+
+        return wp_date( 'Y-m-d', $timestamp );
+    }
+
+    /**
+     * Check if a date is allowed based on lead time.
+     *
+     * @param string $date Date in Y-m-d format.
+     * @return bool
+     */
+    public static function is_date_allowed( string $date ): bool {
+        if ( empty( $date ) ) {
+            return false;
+        }
+
+        $min_date = self::get_min_booking_date();
+        return $date >= $min_date;
+    }
+
+    /**
+     * Check if a slot datetime is allowed based on lead time.
+     *
+     * @param string $datetime MySQL datetime string.
+     * @return bool
+     */
+    public static function is_slot_datetime_allowed( string $datetime ): bool {
+        if ( empty( $datetime ) ) {
+            return false;
+        }
+
+        $slot_date = substr( $datetime, 0, 10 );
+        return self::is_date_allowed( $slot_date );
+    }
+
+    /**
      * Format a datetime for display.
      *
      * @param string $datetime MySQL datetime string.
@@ -232,4 +299,3 @@ class Plugin {
         return $dt->format( 'd/m/Y H:i' );
     }
 }
-

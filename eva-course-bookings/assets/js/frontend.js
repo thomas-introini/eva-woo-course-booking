@@ -25,9 +25,11 @@
       var self = this;
       var availableDates = evaFrontendData.availableDates || [];
 
+      var leadTimeDays = evaFrontendData.leadTimeDays || 0;
+
       $('#eva-date-picker').datepicker({
         dateFormat: 'dd/mm/yy',
-        minDate: 0,
+        minDate: leadTimeDays,
         firstDay: 1,
         dayNamesMin: ['Do', 'Lu', 'Ma', 'Me', 'Gi', 'Ve', 'Sa'],
         monthNames: [
@@ -182,11 +184,15 @@
         success: function (response) {
           if (response.success && response.data.slots.length > 0) {
             self.renderTimeSlots(response.data.slots);
-          } else {
-            $('#eva-time-slots').html(
-              '<p>' + evaFrontendData.i18n.noSlots + '</p>'
-            );
+            return;
           }
+
+          var message = evaFrontendData.i18n.noSlots;
+          if (response.data && response.data.message) {
+            message = response.data.message;
+          }
+
+          $('#eva-time-slots').html('<p>' + message + '</p>');
         },
         error: function () {
           $('#eva-time-slots').html(

@@ -140,6 +140,11 @@ class Woo_Integration
             return false;
         }
 
+        if (! Plugin::is_slot_datetime_allowed($slot['start_datetime'])) {
+            wc_add_notice('La data selezionata non è più disponibile.', 'error');
+            return false;
+        }
+
         // Check capacity.
         if ($slot['remaining'] < $quantity) {
             if ($slot['remaining'] <= 0) {
@@ -337,6 +342,17 @@ class Woo_Integration
                 continue;
             }
 
+            if (! Plugin::is_slot_datetime_allowed($slot['start_datetime'])) {
+                wc_add_notice(
+                    sprintf(
+                        'La data per "%s" non è più disponibile. Scegli un altro orario.',
+                        $cart_item['data']->get_name()
+                    ),
+                    'error'
+                );
+                continue;
+            }
+
             if ($slot['remaining'] < $cart_item['quantity']) {
                 wc_add_notice(
                     sprintf(
@@ -380,6 +396,10 @@ class Woo_Integration
 
             if (! $slot || 'open' !== $slot['status'] || $slot['remaining'] < $cart_item['quantity']) {
                 throw new \Exception('Posti esauriti per l\'orario selezionato. Scegli un altro slot.');
+            }
+
+            if (! Plugin::is_slot_datetime_allowed($slot['start_datetime'])) {
+                throw new \Exception('La data selezionata non è più disponibile.');
             }
         }
     }

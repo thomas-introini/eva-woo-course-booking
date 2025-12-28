@@ -1307,6 +1307,12 @@ class Admin
             'sanitize_callback' => array($this, 'sanitize_color_settings'),
             'default' => self::get_default_colors(),
         ));
+
+        register_setting('eva_course_bookings_settings', 'eva_course_bookings_settings', array(
+            'type' => 'array',
+            'sanitize_callback' => array($this, 'sanitize_booking_settings'),
+            'default' => self::get_default_settings(),
+        ));
     }
 
     /**
@@ -1343,6 +1349,18 @@ class Admin
     }
 
     /**
+     * Get default booking settings.
+     *
+     * @return array
+     */
+    public static function get_default_settings()
+    {
+        return array(
+            'lead_time_days' => 0,
+        );
+    }
+
+    /**
      * Sanitize color settings.
      *
      * @param array $input Input values.
@@ -1371,6 +1389,24 @@ class Admin
     }
 
     /**
+     * Sanitize booking settings.
+     *
+     * @param array $input Input values.
+     * @return array
+     */
+    public function sanitize_booking_settings($input)
+    {
+        $defaults = self::get_default_settings();
+        $output = $defaults;
+
+        if (isset($input['lead_time_days'])) {
+            $output['lead_time_days'] = max(0, absint($input['lead_time_days']));
+        }
+
+        return $output;
+    }
+
+    /**
      * Get current color settings.
      *
      * @return array
@@ -1382,15 +1418,41 @@ class Admin
     }
 
     /**
+     * Get current booking settings.
+     *
+     * @return array
+     */
+    public static function get_booking_settings()
+    {
+        $settings = get_option('eva_course_bookings_settings', array());
+        return wp_parse_args($settings, self::get_default_settings());
+    }
+
+    /**
      * Render settings tab content.
      */
     public function render_settings_content()
     {
         $colors = self::get_color_settings();
+        $settings = self::get_booking_settings();
     ?>
         <div class="eva-settings-content">
             <form method="post" action="" id="eva-settings-form">
                 <?php wp_nonce_field('eva_settings_nonce', 'eva_settings_nonce'); ?>
+
+                <h2>Regole prenotazione</h2>
+                <p class="description">Imposta il numero minimo di giorni di anticipo richiesto per prenotare.</p>
+
+                <table class="form-table">
+                    <tr>
+                        <th><label for="lead_time_days">Anticipo minimo (giorni)</label></th>
+                        <td>
+                            <input type="number" id="lead_time_days" name="settings[lead_time_days]" min="0" step="1"
+                                value="<?php echo esc_attr($settings['lead_time_days']); ?>">
+                            <p class="description">0 = nessun limite.</p>
+                        </td>
+                    </tr>
+                </table>
 
                 <h2>Colori selettore data</h2>
                 <p class="description">Personalizza i colori del box di selezione data/ora nella pagina prodotto.</p>
@@ -1659,9 +1721,12 @@ class Admin
         }
 
         $colors = isset($_POST['colors']) ? (array) $_POST['colors'] : array();
-        $sanitized = $this->sanitize_color_settings($colors);
+        $sanitized_colors = $this->sanitize_color_settings($colors);
+        update_option('eva_course_bookings_colors', $sanitized_colors);
 
-        update_option('eva_course_bookings_colors', $sanitized);
+        $settings = isset($_POST['settings']) ? (array) $_POST['settings'] : array();
+        $sanitized_settings = $this->sanitize_booking_settings($settings);
+        update_option('eva_course_bookings_settings', $sanitized_settings);
 
         wp_send_json_success(array('message' => 'Impostazioni salvate con successo.'));
     }
