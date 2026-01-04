@@ -1,171 +1,205 @@
-# Eva Course Bookings (Free)
+# Eva Course Bookings
 
-Plugin WordPress + WooCommerce per la gestione di prenotazioni di corsi con date e orari.
+WordPress + WooCommerce plugin for managing course bookings with dates and times.
 
-## Funzionalità
+## Features
 
-- ✅ Converti prodotti WooCommerce esistenti in corsi prenotabili
-- ✅ Gestione slot con data, ora e capacità massima
-- ✅ Calendario interattivo per la selezione della data
-- ✅ Prevenzione overselling con query atomiche
-- ✅ Integrazione completa con carrello e checkout (Classic + Block)
-- ✅ Email di conferma con dettagli del corso
-- ✅ Pagina admin per gestione prenotazioni
-- ✅ Compatibile con WooCommerce HPOS
+- ✅ Convert existing WooCommerce products into bookable courses
+- ✅ Slot management with date, time, and maximum capacity
+- ✅ Interactive calendar for date selection
+- ✅ Overselling prevention with atomic queries
+- ✅ Full integration with cart and checkout (Classic + Block)
+- ✅ Order confirmation emails with course details
+- ✅ Course reminder emails with customizable templates
+- ✅ Admin page for booking management
+- ✅ Compatible with WooCommerce HPOS
 
-## Requisiti
+## Requirements
 
 - WordPress 6.0+
 - WooCommerce 7.0+
 - PHP 8.0+
 
-## Installazione
+## Installation
 
-### Opzione 1: Installazione manuale
+### Option 1: Manual Installation
 
-1. Scarica o clona questa repository
-2. Copia la cartella `eva-course-bookings` in `wp-content/plugins/`
-3. Attiva il plugin dal pannello WordPress
+1. Download or clone this repository
+2. Copy the `eva-course-bookings` folder to `wp-content/plugins/`
+3. Activate the plugin from the WordPress admin panel
 
-### Opzione 2: Ambiente di sviluppo Docker
+### Option 2: Docker Development Environment
 
-Vedi la sezione [Sviluppo locale](#sviluppo-locale) sotto.
+See the [Local Development](#local-development) section below.
 
-## Utilizzo
+## Usage
 
-### Abilitare un prodotto come corso
+### Enable a product as a course
 
-1. Vai a **Prodotti → Modifica prodotto**
-2. Nella sezione "Dati prodotto", spunta **"Abilita prenotazione corso"**
-3. Salva il prodotto
-4. Apparirà la sezione **"Date del corso"** dove puoi aggiungere gli slot
+1. Go to **Products → Edit product**
+2. In the "Product data" section, check **"Enable course booking"**
+3. Save the product
+4. The **"Course dates"** section will appear where you can add slots
 
-### Gestire gli slot
+### Manage slots
 
-Nella sezione "Date del corso" del prodotto:
+In the "Course dates" section of the product:
 
-- **Aggiungi slot**: Data, ora inizio, ora fine (opzionale), capacità
-- **Modifica**: Cambia data, ora o capacità
-- **Chiudi/Apri**: Disabilita temporaneamente uno slot
-- **Elimina**: Rimuovi uno slot (solo se non ha prenotazioni)
+- **Add slot**: Date, start time, end time (optional), capacity
+- **Edit**: Change date, time, or capacity
+- **Close/Open**: Temporarily disable a slot
+- **Delete**: Remove a slot (only if it has no bookings)
 
-### Pagina admin prenotazioni
+### Admin bookings page
 
-Vai a **WooCommerce → Prenotazioni corsi** per:
+Go to **WooCommerce → Courses** to:
 
-- Visualizzare tutti gli slot
-- Filtrare per prodotto, stato o data
-- Gestire slot da un'unica pagina
+- View all slots
+- Filter by product, status, or date
+- Manage slots from a single page
+- View booking details for each slot
+- Send reminder emails to participants
 
-### Abilitazione in blocco
+### Bulk enable
 
-Vai a **WooCommerce → Abilita corsi** per abilitare la prenotazione su più prodotti contemporaneamente.
+Go to **WooCommerce → Courses → Enabled Courses** tab to enable booking on multiple products at once.
+
+### Course Reminder Emails
+
+The plugin includes a WooCommerce transactional email for sending reminders to course participants.
+
+#### Configure the reminder email
+
+1. Go to **WooCommerce → Settings → Emails**
+2. Find **"Course Reminder"** in the list
+3. Click to configure:
+   - Enable/disable the email
+   - Customize subject and heading (supports placeholders)
+   - Set the course location/address
+   - Add custom notes (e.g., "Please bring a yoga mat")
+   - Set additional content
+
+#### Send reminders
+
+1. Go to **WooCommerce → Courses → Bookings** tab
+2. Click **"View bookings"** on a slot
+3. Use the **"✉ Reminder"** button to send to individual participants
+4. Use **"✉ Send reminder to all participants"** to send to everyone
+
+The email includes:
+- Customer name
+- Course name, date, and time
+- Number of participants
+- Location (if configured)
+- Custom notes (if configured)
 
 ### Self-test
 
-Vai a **WooCommerce → Eva Self Test** per verificare che il plugin sia configurato correttamente.
+Go to **WooCommerce → Eva Self Test** to verify the plugin is configured correctly.
 
 ## Frontend
 
-Quando un prodotto è abilitato come corso:
+When a product is enabled as a course:
 
-1. Il cliente vede un calendario con le date disponibili
-2. Selezionando una data, appaiono gli orari disponibili
-3. Dopo aver selezionato uno slot, può procedere all'acquisto
-4. La quantità rappresenta il numero di partecipanti
+1. The customer sees a calendar with available dates
+2. Selecting a date shows available time slots
+3. After selecting a slot, they can proceed to checkout
+4. The quantity represents the number of participants
 
-## Sviluppo locale
+## Local Development
 
-### Prerequisiti
+### Prerequisites
 
-- Docker e Docker Compose installati
-- Porta 8080 e 8081 disponibili
+- Docker and Docker Compose installed
+- Ports 8080 and 8081 available
 
-### Avvio
+### Startup
 
 ```bash
-# Avvia l'ambiente
+# Start the environment
 ./bin/up.sh
 
-# Attendi il completamento del setup automatico
+# Wait for automatic setup to complete
 ```
 
-### URL
+### URLs
 
-| Servizio    | URL                           | Credenziali          |
+| Service     | URL                           | Credentials          |
 |-------------|-------------------------------|----------------------|
 | WordPress   | http://localhost:8080         | -                    |
 | WP Admin    | http://localhost:8080/wp-admin| admin / admin        |
 | phpMyAdmin  | http://localhost:8081         | wordpress / wordpress|
 
-### Comandi disponibili
+### Available commands
 
 ```bash
-# Avvia ambiente
+# Start environment
 ./bin/up.sh
 
-# Ferma ambiente (mantiene i dati)
+# Stop environment (keeps data)
 ./bin/down.sh
 
-# Reset completo (cancella tutti i dati)
+# Full reset (deletes all data)
 ./bin/reset.sh
 
-# Visualizza log
+# View logs
 ./bin/logs.sh
 
-# Log di un servizio specifico
+# Logs for a specific service
 ./bin/logs.sh wordpress
 ./bin/logs.sh db
 ```
 
-### Setup automatico
+### Automatic setup
 
-Lo script `up.sh` esegue automaticamente:
+The `up.sh` script automatically runs:
 
-1. Avvio container Docker
-2. Installazione WordPress
-3. Installazione e configurazione WooCommerce
-4. Creazione prodotti di esempio
-5. Attivazione plugin Eva Course Bookings
+1. Start Docker containers
+2. Install WordPress
+3. Install and configure WooCommerce
+4. Create sample products
+5. Activate Eva Course Bookings plugin
 
-### Prodotti di esempio
+### Sample products
 
-Vengono creati automaticamente tre prodotti:
+Three products are automatically created:
 
-1. **Corso di Fotografia Base** - €150.00
-2. **Workshop di Cucina Italiana** - €89.00
-3. **Corso di Yoga** - €120.00
+1. **Basic Photography Course** - €150.00
+2. **Italian Cooking Workshop** - €89.00
+3. **Yoga Course** - €120.00
 
-### Testare il plugin
+### Testing the plugin
 
-1. Vai a **Prodotti** nel pannello admin
-2. Modifica uno dei prodotti di esempio
-3. Spunta "Abilita prenotazione corso"
-4. Aggiungi alcuni slot nella sezione "Date del corso"
-5. Visualizza il prodotto sul frontend
-6. Testa il flusso di acquisto
+1. Go to **Products** in the admin panel
+2. Edit one of the sample products
+3. Check "Enable course booking"
+4. Add some slots in the "Course dates" section
+5. View the product on the frontend
+6. Test the purchase flow
 
 ## Build
 
-Per creare un pacchetto zip installabile:
+To create an installable zip package:
 
 ```bash
 ./build.sh
 ```
 
-Questo genera `eva-course-bookings.zip` pronto per l'upload su WordPress.
+This generates `eva-course-bookings.zip` ready for upload to WordPress.
 
-## Struttura del plugin
+## Plugin Structure
 
 ```
 eva-course-bookings/
-├── eva-course-bookings.php    # File principale
+├── eva-course-bookings.php    # Main file
 ├── includes/
-│   ├── class-plugin.php       # Classe principale
-│   ├── class-admin.php        # Funzionalità admin
-│   ├── class-frontend.php     # Funzionalità frontend
-│   ├── class-slot-repository.php    # CRUD slot
-│   └── class-woo-integration.php    # Integrazione WooCommerce
+│   ├── class-plugin.php       # Main class
+│   ├── class-admin.php        # Admin functionality
+│   ├── class-frontend.php     # Frontend functionality
+│   ├── class-slot-repository.php    # Slot CRUD
+│   ├── class-woo-integration.php    # WooCommerce integration
+│   └── emails/
+│       └── class-wc-email-course-reminder.php  # Reminder email class
 ├── assets/
 │   ├── css/
 │   │   ├── admin.css
@@ -173,40 +207,44 @@ eva-course-bookings/
 │   └── js/
 │       ├── admin.js
 │       └── frontend.js
-└── templates/                 # (riservato per template futuri)
+└── templates/
+    └── emails/
+        ├── course-reminder.php        # HTML email template
+        └── plain/
+            └── course-reminder.php    # Plain text email template
 ```
 
-## Hook e filtri
+## Hooks and Filters
 
-### Azioni
+### Actions
 
 ```php
-// Dopo la prenotazione di posti
+// After seat reservation
 do_action( 'eva_course_bookings_seats_reserved', $slot_id, $quantity, $order_id );
 
-// Dopo il rilascio di posti
+// After seat release
 do_action( 'eva_course_bookings_seats_released', $slot_id, $quantity, $order_id );
 ```
 
-### Filtri
+### Filters
 
 ```php
-// Modifica date disponibili
+// Modify available dates
 add_filter( 'eva_course_bookings_available_dates', function( $dates, $product_id ) {
     return $dates;
 }, 10, 2 );
 
-// Modifica slot disponibili
+// Modify available slots
 add_filter( 'eva_course_bookings_available_slots', function( $slots, $product_id ) {
     return $slots;
 }, 10, 2 );
 ```
 
-## Note tecniche
+## Technical Notes
 
-### Prevenzione overselling
+### Overselling Prevention
 
-Il plugin usa query SQL atomiche per prevenire condizioni di race:
+The plugin uses atomic SQL queries to prevent race conditions:
 
 ```sql
 UPDATE postmeta pm1
@@ -218,33 +256,46 @@ AND pm2.meta_key = '_eva_capacity'
 AND (pm1.meta_value + {qty}) <= pm2.meta_value
 ```
 
-### Compatibilità Block Checkout
+### Block Checkout Compatibility
 
-Il plugin supporta sia il checkout classico che il nuovo Block Checkout di WooCommerce:
+The plugin supports both classic checkout and WooCommerce's new Block Checkout:
 
-- Validazione carrello via `woocommerce_check_cart_items`
-- Validazione checkout via `woocommerce_store_api_checkout_update_order_from_request`
-- Persistenza dati slot nel carrello
+- Cart validation via `woocommerce_check_cart_items`
+- Checkout validation via `woocommerce_store_api_checkout_update_order_from_request`
+- Slot data persistence in cart
 
 ### Caching
 
-Per compatibilità con plugin di caching, gli slot vengono caricati via AJAX nel frontend.
+For compatibility with caching plugins, slots are loaded via AJAX on the frontend.
 
 ## Changelog
 
+### 1.2.0
+
+- Added course reminder email functionality
+- WooCommerce transactional email integration
+- Configurable email template with location and notes
+- Send reminders to individual or all participants
+- Email settings accessible from WooCommerce → Settings → Emails
+
+### 1.1.0
+
+- Admin improvements
+- Pending bookings management
+- Order slot assignment
+
 ### 1.0.0
 
-- Release iniziale
-- Gestione slot per prodotti
-- Integrazione carrello e checkout
-- Pannello admin prenotazioni
-- Supporto Block Checkout
+- Initial release
+- Slot management for products
+- Cart and checkout integration
+- Admin bookings panel
+- Block Checkout support
 
-## Licenza
+## License
 
-GPL v2 o successiva
+GPL v2 or later
 
-## Supporto
+## Support
 
-Per bug e richieste di funzionalità, apri una issue su GitHub.
-
+For bugs and feature requests, open an issue on GitHub.
