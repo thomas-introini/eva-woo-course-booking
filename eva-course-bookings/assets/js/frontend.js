@@ -81,6 +81,16 @@
         self.onSkipSlotChanged($(this).is(':checked'));
       });
 
+      // Gift recipient checkbox
+      $('#eva-gift-recipient-checkbox').on('change', function () {
+        self.onGiftRecipientChanged($(this).is(':checked'));
+      });
+
+      // Gift email input
+      $('#eva-gift-email').on('input', function () {
+        $('#eva-gift-validation-message').hide();
+      });
+
       // Time slot selection
       $(document).on('click', '.eva-time-slot', function () {
         self.onTimeSlotSelected($(this));
@@ -113,6 +123,9 @@
         // Show skip slot summary
         $('#eva-skip-slot-summary').show();
 
+        // Show gift option
+        $('#eva-gift-option').show();
+
         // Set hidden field
         $('#eva-skip-slot').val('1');
 
@@ -131,6 +144,13 @@
         // Hide skip slot summary
         $('#eva-skip-slot-summary').hide();
 
+        // Hide gift option and reset fields
+        $('#eva-gift-option').hide();
+        $('#eva-gift-recipient-checkbox').prop('checked', false);
+        $('#eva-gift-email').val('');
+        $('#eva-gift-email-field').hide();
+        $('#eva-gift-validation-message').hide();
+
         // Clear hidden field
         $('#eva-skip-slot').val('');
 
@@ -145,6 +165,16 @@
           $('#eva-time-slots').empty();
           this.disableAddToCart();
         }
+      }
+    },
+
+    onGiftRecipientChanged: function (isChecked) {
+      if (isChecked) {
+        $('#eva-gift-email-field').show();
+      } else {
+        $('#eva-gift-email-field').hide();
+        $('#eva-gift-email').val('');
+        $('#eva-gift-validation-message').hide();
       }
     },
 
@@ -335,6 +365,21 @@
     validateSelection: function () {
       // If skip slot is enabled, always valid
       if (this.skipSlotEnabled) {
+        var wantsGift = $('#eva-gift-recipient-checkbox').is(':checked');
+        if (wantsGift) {
+          var $giftEmail = $('#eva-gift-email');
+          var emailValue = $giftEmail.val().trim();
+          if (!emailValue || !$giftEmail[0].checkValidity()) {
+            $('#eva-gift-validation-message').show();
+            $('html, body').animate(
+              {
+                scrollTop: $('#eva-gift-option').offset().top - 100,
+              },
+              300
+            );
+            return false;
+          }
+        }
         return true;
       }
 

@@ -108,6 +108,14 @@ class Woo_Integration
         $skip_slot = isset($_POST['eva_skip_slot']) && '1' === $_POST['eva_skip_slot'];
 
         if ($skip_slot) {
+            $gift_recipient = isset($_POST['eva_gift_recipient']);
+            $gift_email = isset($_POST['eva_gift_email']) ? sanitize_email(wp_unslash($_POST['eva_gift_email'])) : '';
+
+            if ($gift_recipient && (! $gift_email || ! is_email($gift_email))) {
+                wc_add_notice('Inserisci un\'email valida per il destinatario.', 'error');
+                return false;
+            }
+
             // Allow purchase without slot - will be assigned later by admin.
             return $passed;
         }
@@ -202,6 +210,11 @@ class Woo_Integration
 
         if ($skip_slot) {
             $cart_item_data['eva_pending_booking'] = true;
+            $gift_recipient = isset($_POST['eva_gift_recipient']);
+            $gift_email = isset($_POST['eva_gift_email']) ? sanitize_email(wp_unslash($_POST['eva_gift_email'])) : '';
+            if ($gift_recipient && $gift_email && is_email($gift_email)) {
+                $cart_item_data['eva_gift_email'] = $gift_email;
+            }
             $cart_item_data['unique_key'] = md5($product_id . '_pending_' . time() . '_' . wp_rand());
             return $cart_item_data;
         }
@@ -237,6 +250,12 @@ class Woo_Integration
                 'key'   => 'Data corso',
                 'value' => 'Da definire (regalo o prenotazione futura)',
             );
+            if (! empty($cart_item['eva_gift_email'])) {
+                $item_data[] = array(
+                    'key'   => 'Email destinatario',
+                    'value' => $cart_item['eva_gift_email'],
+                );
+            }
             return $item_data;
         }
 
@@ -418,6 +437,9 @@ class Woo_Integration
         if (isset($values['eva_pending_booking']) && $values['eva_pending_booking']) {
             $item->add_meta_data('_eva_pending_booking', 'yes', true);
             $item->add_meta_data('_eva_slot_qty', $values['quantity'], true);
+            if (! empty($values['eva_gift_email'])) {
+                $item->add_meta_data('_eva_gift_email', $values['eva_gift_email'], true);
+            }
             return;
         }
 
@@ -576,6 +598,8 @@ class Woo_Integration
                 return 'Partecipanti';
             case '_eva_pending_booking':
                 return 'Stato prenotazione';
+            case '_eva_gift_email':
+                return 'Email destinatario';
         }
 
         return $display_key;
@@ -602,6 +626,10 @@ class Woo_Integration
 
         if ('_eva_pending_booking' === $meta->key) {
             return 'Da definire (regalo o prenotazione futura)';
+        }
+
+        if ('_eva_gift_email' === $meta->key) {
+            return $meta->value;
         }
 
         return $display_value;

@@ -226,6 +226,23 @@ class Frontend
                     </p>
                 </div>
 
+                <div class="eva-gift-option" id="eva-gift-option" style="display: none;">
+                    <label class="eva-gift-option-label">
+                        <input type="checkbox" id="eva-gift-recipient-checkbox" name="eva_gift_recipient" class="eva-gift-recipient-checkbox">
+                        <span class="eva-gift-option-text">Regalo per un'altra persona</span>
+                    </label>
+                    <div class="eva-field eva-gift-email-field" id="eva-gift-email-field" style="display: none;">
+                        <label for="eva-gift-email">Email del destinatario *</label>
+                        <input type="email" id="eva-gift-email" name="eva_gift_email" placeholder="nome@email.com">
+                        <p class="eva-gift-email-description">
+                            Useremo questa email per permettere al destinatario di scegliere la data del corso.
+                        </p>
+                    </div>
+                    <div class="eva-validation-message" id="eva-gift-validation-message" style="display: none;">
+                        Inserisci un'email valida per il destinatario.
+                    </div>
+                </div>
+
                 <?php if (! $has_dates) : ?>
                     <p class="eva-skip-slot-description" style="margin: 0;">
                         Al momento non ci sono date disponibili. Puoi procedere all'acquisto e scegliere la data in seguito.
@@ -335,7 +352,7 @@ class Frontend
             }
         }
 
-        $course_items = $order ? $this->get_course_items_for_order($order) : array();
+        $course_items = $order ? $this->get_course_items_for_order($order, $order_email) : array();
 
         ob_start();
 ?>
@@ -348,7 +365,7 @@ class Frontend
                         <input type="text" id="eva-order-id" name="eva_order_id" inputmode="numeric" value="<?php echo esc_attr($order_id); ?>" required>
                     </div>
                     <div class="eva-field">
-                        <label for="eva-order-email">Email usata per l'ordine *</label>
+                        <label for="eva-order-email">Email usata per l'ordine o del destinatario *</label>
                         <input type="email" id="eva-order-email" name="eva_order_email" value="<?php echo esc_attr($order_email); ?>" required>
                     </div>
                 </div>
@@ -506,11 +523,18 @@ class Frontend
             return null;
         }
 
-        if (! hash_equals(strtolower($billing_email), strtolower($email))) {
-            return null;
+        if (hash_equals(strtolower($billing_email), strtolower($email))) {
+            return $order;
         }
 
-        return $order;
+        foreach ($order->get_items() as $item) {
+            $gift_email = $item->get_meta('_eva_gift_email');
+            if ($gift_email && hash_equals(strtolower($gift_email), strtolower($email))) {
+                return $order;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -595,13 +619,20 @@ class Frontend
      * @param \WC_Order $order Order object.
      * @return array
      */
-    private function get_course_items_for_order($order)
+    private function get_course_items_for_order($order, $lookup_email = '')
     {
         $items = array();
+        $billing_email = $order->get_billing_email();
+        $restrict_to_gift = $lookup_email && $billing_email && ! hash_equals(strtolower($billing_email), strtolower($lookup_email));
 
         foreach ($order->get_items() as $item_id => $item) {
             $product_id = $item->get_product_id();
             if (! Plugin::is_course_enabled($product_id)) {
+                continue;
+            }
+
+            $gift_email = $item->get_meta('_eva_gift_email');
+            if ($restrict_to_gift && (! $gift_email || ! hash_equals(strtolower($gift_email), strtolower($lookup_email)))) {
                 continue;
             }
 

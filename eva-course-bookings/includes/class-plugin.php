@@ -84,6 +84,9 @@ class Plugin {
         // Load textdomain.
         add_action( 'init', array( $this, 'load_textdomain' ) );
 
+        // Register custom WooCommerce emails.
+        add_filter( 'woocommerce_email_classes', array( $this, 'register_email_classes' ) );
+
         // Register AJAX handlers.
         add_action( 'wp_ajax_eva_get_available_dates', array( $this, 'ajax_get_available_dates' ) );
         add_action( 'wp_ajax_nopriv_eva_get_available_dates', array( $this, 'ajax_get_available_dates' ) );
@@ -100,6 +103,22 @@ class Plugin {
             false,
             dirname( EVA_COURSE_BOOKINGS_PLUGIN_BASENAME ) . '/languages'
         );
+    }
+
+    /**
+     * Register custom WooCommerce email classes.
+     *
+     * @param array $email_classes Existing email classes.
+     * @return array Modified email classes.
+     */
+    public function register_email_classes( $email_classes ) {
+        // Include the custom email class.
+        require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/emails/class-wc-email-course-reminder.php';
+
+        // Add our email class.
+        $email_classes['WC_Email_Course_Reminder'] = new WC_Email_Course_Reminder();
+
+        return $email_classes;
     }
 
     /**

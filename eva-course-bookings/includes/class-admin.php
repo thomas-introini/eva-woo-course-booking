@@ -56,6 +56,8 @@ class Admin
         add_action('wp_ajax_eva_admin_change_slot', array($this, 'ajax_change_order_item_slot'));
         add_action('wp_ajax_eva_admin_get_product_slots', array($this, 'ajax_get_product_slots'));
         add_action('wp_ajax_eva_admin_save_settings', array($this, 'ajax_save_settings'));
+        add_action('wp_ajax_eva_admin_send_reminder', array($this, 'ajax_send_slot_reminder'));
+        add_action('wp_ajax_eva_admin_send_reminder_all', array($this, 'ajax_send_slot_reminder_all'));
 
         // Self-test page.
         add_action('admin_menu', array($this, 'add_selftest_page'), 99);
@@ -773,7 +775,12 @@ class Admin
             <?php if (empty($bookings)) : ?>
                 <p>Nessuna prenotazione per questo slot.</p>
             <?php else : ?>
-                <table class="wp-list-table widefat fixed striped">
+                <table class="wp-list-table widefat fixed striped" id="eva-slot-bookings-table"
+                    data-slot-id="<?php echo esc_attr($slot_id); ?>"
+                    data-course-name="<?php echo esc_attr($product_name); ?>"
+                    data-course-date="<?php echo esc_attr($start_dt ? $start_dt->format('d/m/Y') : ''); ?>"
+                    data-course-time="<?php echo esc_attr($start_dt ? $start_dt->format('H:i') : ''); ?>"
+                    data-course-end-time="<?php echo esc_attr($end_dt ? $end_dt->format('H:i') : ''); ?>">
                     <thead>
                         <tr>
                             <th>Ordine</th>
@@ -788,7 +795,10 @@ class Admin
                     </thead>
                     <tbody>
                         <?php foreach ($bookings as $booking) : ?>
-                            <tr>
+                            <tr data-order-id="<?php echo esc_attr($booking['order_id']); ?>"
+                                data-customer-name="<?php echo esc_attr($booking['customer_name']); ?>"
+                                data-customer-email="<?php echo esc_attr($booking['customer_email']); ?>"
+                                data-quantity="<?php echo esc_attr($booking['quantity']); ?>">
                                 <td>
                                     <a href="<?php echo esc_url($booking['edit_url']); ?>">
                                         <strong>#<?php echo esc_html($booking['order_id']); ?></strong>
@@ -812,6 +822,11 @@ class Admin
                                     <a href="<?php echo esc_url($booking['edit_url']); ?>" class="button button-small">
                                         Vedi ordine
                                     </a>
+                                    <?php if (! empty($booking['customer_email']) && is_email($booking['customer_email'])) : ?>
+                                        <button type="button" class="button button-small eva-send-reminder-single" title="Invia promemoria">
+                                            ✉ Promemoria
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -831,13 +846,22 @@ class Admin
                     </tfoot>
                 </table>
 
-                <h3>Esporta lista partecipanti</h3>
-                <p>
-                    <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni&view=slot&slot_id=' . $slot_id . '&export=csv')); ?>"
-                        class="button">
-                        Scarica CSV
-                    </a>
-                </p>
+                <div class="eva-slot-actions" style="margin-top: 20px;">
+                    <h3>Azioni</h3>
+                    <p>
+                        <button type="button" id="eva-send-reminder-all" class="button button-primary" data-slot-id="<?php echo esc_attr($slot_id); ?>">
+                            ✉ Invia promemoria a tutti i partecipanti
+                        </button>
+                        <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni&view=slot&slot_id=' . $slot_id . '&export=csv')); ?>"
+                            class="button">
+                            Scarica CSV
+                        </a>
+                    </p>
+                    <p class="description">
+                        Il promemoria verrà inviato solo ai partecipanti con un indirizzo email valido.
+                        Puoi configurare il contenuto dell'email in <a href="<?php echo esc_url(admin_url('admin.php?page=wc-settings&tab=email&section=eva_course_reminder')); ?>">WooCommerce → Impostazioni → Email → Promemoria corso</a>.
+                    </p>
+                </div>
             <?php endif; ?>
         </div>
     <?php
@@ -2735,5 +2759,190 @@ class Admin
                 Plugin::format_datetime_italian($slot_start)
             )
         ));
+    }
+
+    /**
+     * AJAX: Send course reminder email to a single participant.
+     */
+    public function ajax_send_slot_reminder()
+    {
+        check_ajax_referer('eva_admin_nonce', 'nonce');
+
+        if (! current_user_can('manage_woocommerce')) {
+            wp_send_json_error(array('message' => 'Permesso negato.'));
+        }
+
+        $slot_id        = isset($_POST['slot_id']) ? absint($_POST['slot_id']) : 0;
+        $customer_email = isset($_POST['customer_email']) ? sanitize_email($_POST['customer_email']) : '';
+        $customer_name  = isset($_POST['customer_name']) ? sanitize_text_field(wp_unslash($_POST['customer_name'])) : '';
+        $quantity       = isset($_POST['quantity']) ? absint($_POST['quantity']) : 1;
+        $course_name    = isset($_POST['course_name']) ? sanitize_text_field(wp_unslash($_POST['course_name'])) : '';
+        $course_date    = isset($_POST['course_date']) ? sanitize_text_field(wp_unslash($_POST['course_date'])) : '';
+        $course_time    = isset($_POST['course_time']) ? sanitize_text_field(wp_unslash($_POST['course_time'])) : '';
+        $course_end_time = isset($_POST['course_end_time']) ? sanitize_text_field(wp_unslash($_POST['course_end_time'])) : '';
+
+        if (! $slot_id) {
+            wp_send_json_error(array('message' => 'ID slot non valido.'));
+        }
+
+        if (! $customer_email || ! is_email($customer_email)) {
+            wp_send_json_error(array('message' => 'Indirizzo email non valido.'));
+        }
+
+        // Send the reminder email.
+        $result = $this->send_course_reminder_email(array(
+            'recipient'         => $customer_email,
+            'customer_name'     => $customer_name,
+            'course_name'       => $course_name,
+            'course_date'       => $course_date,
+            'course_time'       => $course_time,
+            'course_end_time'   => $course_end_time,
+            'participant_count' => $quantity,
+        ));
+
+        if ($result) {
+            Slot_Repository::log(sprintf(
+                'Reminder email sent: Slot %d, Email %s',
+                $slot_id,
+                $customer_email
+            ));
+
+            wp_send_json_success(array(
+                'message' => sprintf('Promemoria inviato a %s.', $customer_email)
+            ));
+        } else {
+            wp_send_json_error(array(
+                'message' => 'Impossibile inviare l\'email. Verifica che l\'email di promemoria sia abilitata in WooCommerce → Impostazioni → Email.'
+            ));
+        }
+    }
+
+    /**
+     * AJAX: Send course reminder email to all participants of a slot.
+     */
+    public function ajax_send_slot_reminder_all()
+    {
+        check_ajax_referer('eva_admin_nonce', 'nonce');
+
+        if (! current_user_can('manage_woocommerce')) {
+            wp_send_json_error(array('message' => 'Permesso negato.'));
+        }
+
+        $slot_id = isset($_POST['slot_id']) ? absint($_POST['slot_id']) : 0;
+
+        if (! $slot_id) {
+            wp_send_json_error(array('message' => 'ID slot non valido.'));
+        }
+
+        $slot = $this->slot_repository->get_slot($slot_id);
+        if (! $slot) {
+            wp_send_json_error(array('message' => 'Slot non trovato.'));
+        }
+
+        // Get product name.
+        $product = get_post($slot['product_id']);
+        $course_name = $product ? $product->post_title : 'Corso';
+
+        // Format date/time.
+        $start_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime']);
+        $end_dt = $slot['end_datetime'] ? \DateTime::createFromFormat('Y-m-d H:i:s', $slot['end_datetime']) : null;
+
+        $course_date = $start_dt ? $start_dt->format('d/m/Y') : '';
+        $course_time = $start_dt ? $start_dt->format('H:i') : '';
+        $course_end_time = $end_dt ? $end_dt->format('H:i') : '';
+
+        // Get all bookings for this slot.
+        $bookings = $this->get_orders_for_slot($slot_id);
+
+        if (empty($bookings)) {
+            wp_send_json_error(array('message' => 'Nessuna prenotazione per questo slot.'));
+        }
+
+        $sent_count = 0;
+        $failed = array();
+        $skipped = array();
+
+        foreach ($bookings as $booking) {
+            $email = $booking['customer_email'];
+
+            // Validate email.
+            if (empty($email) || ! is_email($email)) {
+                $skipped[] = $booking['customer_name'] ?: 'Ordine #' . $booking['order_id'];
+                continue;
+            }
+
+            $result = $this->send_course_reminder_email(array(
+                'recipient'         => $email,
+                'customer_name'     => $booking['customer_name'],
+                'course_name'       => $course_name,
+                'course_date'       => $course_date,
+                'course_time'       => $course_time,
+                'course_end_time'   => $course_end_time,
+                'participant_count' => $booking['quantity'],
+            ));
+
+            if ($result) {
+                $sent_count++;
+            } else {
+                $failed[] = $email;
+            }
+        }
+
+        Slot_Repository::log(sprintf(
+            'Bulk reminder emails sent: Slot %d, Sent %d, Failed %d, Skipped %d',
+            $slot_id,
+            $sent_count,
+            count($failed),
+            count($skipped)
+        ));
+
+        $message = sprintf('Promemoria inviati: %d su %d.', $sent_count, count($bookings));
+
+        if (! empty($failed)) {
+            $message .= sprintf(' Falliti: %d.', count($failed));
+        }
+
+        if (! empty($skipped)) {
+            $message .= sprintf(' Saltati (email non valida): %d.', count($skipped));
+        }
+
+        if ($sent_count === 0 && ! empty($failed)) {
+            wp_send_json_error(array(
+                'message' => 'Nessun promemoria inviato. Verifica che l\'email di promemoria sia abilitata in WooCommerce → Impostazioni → Email.',
+                'sent'    => $sent_count,
+                'failed'  => count($failed),
+                'skipped' => count($skipped),
+            ));
+        }
+
+        wp_send_json_success(array(
+            'message' => $message,
+            'sent'    => $sent_count,
+            'failed'  => count($failed),
+            'skipped' => count($skipped),
+        ));
+    }
+
+    /**
+     * Send a course reminder email.
+     *
+     * @param array $args Email arguments.
+     * @return bool Whether the email was sent.
+     */
+    private function send_course_reminder_email($args)
+    {
+        // Get the WooCommerce mailer.
+        $mailer = WC()->mailer();
+        $emails = $mailer->get_emails();
+
+        // Find our reminder email class.
+        if (! isset($emails['WC_Email_Course_Reminder'])) {
+            return false;
+        }
+
+        $reminder_email = $emails['WC_Email_Course_Reminder'];
+
+        // Trigger the email.
+        return $reminder_email->trigger($args);
     }
 }

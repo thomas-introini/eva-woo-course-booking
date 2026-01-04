@@ -91,6 +91,35 @@
             $('#eva-deselect-all').on('click', function() {
                 $('input[name="product_ids[]"]').prop('checked', false);
             });
+
+            // Send reminder to single participant
+            $(document).on('click', '.eva-send-reminder-single', function(e) {
+                e.preventDefault();
+                var $btn = $(this);
+                var $row = $btn.closest('tr');
+                var $table = $('#eva-slot-bookings-table');
+
+                var data = {
+                    slot_id: $table.data('slot-id'),
+                    customer_email: $row.data('customer-email'),
+                    customer_name: $row.data('customer-name'),
+                    quantity: $row.data('quantity'),
+                    course_name: $table.data('course-name'),
+                    course_date: $table.data('course-date'),
+                    course_time: $table.data('course-time'),
+                    course_end_time: $table.data('course-end-time')
+                };
+
+                self.sendReminderSingle($btn, data);
+            });
+
+            // Send reminder to all participants
+            $(document).on('click', '#eva-send-reminder-all', function(e) {
+                e.preventDefault();
+                var $btn = $(this);
+                var slotId = $btn.data('slot-id');
+                self.sendReminderAll($btn, slotId);
+            });
         },
 
         toggleSlotsVisibility: function() {
@@ -356,13 +385,106 @@
             var noticeClass = type === 'success' ? 'notice-success' : 'notice-error';
             var notice = $('<div class="notice ' + noticeClass + ' is-dismissible"><p>' + message + '</p></div>');
 
-            $('.eva-slots-container').prepend(notice);
+            // Try to find a suitable container for the notice
+            var $container = $('.eva-slots-container');
+            if ($container.length === 0) {
+                $container = $('.eva-slot-bookings-content');
+            }
+            if ($container.length === 0) {
+                $container = $('.wrap');
+            }
+
+            $container.prepend(notice);
 
             setTimeout(function() {
                 notice.fadeOut(function() {
                     $(this).remove();
                 });
-            }, 3000);
+            }, 5000);
+        },
+
+        sendReminderSingle: function($btn, data) {
+            var self = this;
+            var originalText = $btn.html();
+
+            if (!confirm('Inviare il promemoria a ' + data.customer_email + '?')) {
+                return;
+            }
+
+            $.ajax({
+                url: evaAdminData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'eva_admin_send_reminder',
+                    nonce: evaAdminData.nonce,
+                    slot_id: data.slot_id,
+                    customer_email: data.customer_email,
+                    customer_name: data.customer_name,
+                    quantity: data.quantity,
+                    course_name: data.course_name,
+                    course_date: data.course_date,
+                    course_time: data.course_time,
+                    course_end_time: data.course_end_time
+                },
+                beforeSend: function() {
+                    $btn.prop('disabled', true).html('Invio...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.showNotice('success', response.data.message);
+                        $btn.html('✓ Inviato');
+                        setTimeout(function() {
+                            $btn.html(originalText).prop('disabled', false);
+                        }, 3000);
+                    } else {
+                        self.showNotice('error', response.data.message);
+                        $btn.html(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    self.showNotice('error', evaAdminData.i18n.errorOccurred);
+                    $btn.html(originalText).prop('disabled', false);
+                }
+            });
+        },
+
+        sendReminderAll: function($btn, slotId) {
+            var self = this;
+            var originalText = $btn.html();
+            var participantCount = $('#eva-slot-bookings-table tbody tr').length;
+
+            if (!confirm('Inviare il promemoria a tutti i ' + participantCount + ' partecipanti?')) {
+                return;
+            }
+
+            $.ajax({
+                url: evaAdminData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'eva_admin_send_reminder_all',
+                    nonce: evaAdminData.nonce,
+                    slot_id: slotId
+                },
+                beforeSend: function() {
+                    $btn.prop('disabled', true).html('Invio in corso...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.showNotice('success', response.data.message);
+                        $btn.html('✓ Inviati ' + response.data.sent);
+                        setTimeout(function() {
+                            $btn.html(originalText).prop('disabled', false);
+                        }, 5000);
+                    } else {
+                        self.showNotice('error', response.data.message);
+                        $btn.html(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    self.showNotice('error', evaAdminData.i18n.errorOccurred);
+                    $btn.html(originalText).prop('disabled', false);
+                }
+            });
         }
     };
 
