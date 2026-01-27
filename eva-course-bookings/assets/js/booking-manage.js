@@ -38,9 +38,19 @@
 
         var leadTimeDays = evaBookingData.leadTimeDays || 0;
 
+        // Find the first available date to set as default month
+        var firstAvailableDate = null;
+        if (availableDates.length > 0) {
+          var sortedDates = availableDates.slice().sort();
+          var dateStr = sortedDates[0]; // Format: YYYY-MM-DD
+          var parts = dateStr.split('-');
+          firstAvailableDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        }
+
         $dateInput.datepicker({
           dateFormat: 'dd/mm/yy',
           minDate: leadTimeDays,
+          defaultDate: firstAvailableDate,
           firstDay: 1,
           dayNamesMin: ['Do', 'Lu', 'Ma', 'Me', 'Gi', 'Ve', 'Sa'],
           monthNames: [
