@@ -34,10 +34,10 @@ echo "⏳ Waiting for database to be ready..."
 sleep 5
 
 # Fix permissions for wp-content (needed for WP-CLI to install plugins)
-echo ""
-echo "🔧 Fixing wp-content permissions..."
-docker exec eva-wordpress chown -R www-data:www-data /var/www/html/wp-content
-docker exec eva-wordpress chmod -R 755 /var/www/html/wp-content
+# echo ""
+# echo "🔧 Fixing wp-content permissions..."
+# docker exec eva-wordpress chown -R www-data:www-data /var/www/html/wp-content
+# docker exec eva-wordpress chmod -R 755 /var/www/html/wp-content
 
 # Check if WordPress is installed
 INSTALLED=$(docker exec eva-wpcli wp core is-installed 2>&1 || echo "not installed")

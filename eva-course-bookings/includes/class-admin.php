@@ -39,7 +39,9 @@ class Admin
 
         // Product edit screen.
         add_action('woocommerce_product_options_general_product_data', array($this, 'add_course_enabled_checkbox'));
+        add_action('woocommerce_product_options_general_product_data', array($this, 'add_course_skip_slot_checkbox'));
         add_action('woocommerce_process_product_meta', array($this, 'save_course_enabled_checkbox'));
+        add_action('woocommerce_process_product_meta', array($this, 'save_course_skip_slot_checkbox'));
         add_action('add_meta_boxes', array($this, 'add_slots_metabox'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
 
@@ -261,6 +263,39 @@ class Admin
 
         $enabled = isset($_POST['_eva_course_enabled']) ? 'yes' : 'no';
         update_post_meta($post_id, '_eva_course_enabled', $enabled);
+    }
+
+    /**
+     * Add course skip slot checkbox to product general options.
+     */
+    public function add_course_skip_slot_checkbox()
+    {
+        global $post;
+
+        woocommerce_wp_checkbox(
+            array(
+                'id'          => '_eva_course_skip_slot',
+                'label'       => 'Permetti prenotazioni future senza specificare data e orario',
+                'description' => 'Attiva questa opzione per permettere ai clienti di prenotare un corso senza specificare data e orario.',
+                'value'       => get_post_meta($post->ID, '_eva_course_skip_slot', true),
+            )
+        );
+    }
+
+    /**
+     * Save course skip slot checkbox.
+     *
+     * @param int $post_id Product ID.
+     */
+    public function save_course_skip_slot_checkbox($post_id)
+    {
+        // Verify nonce is handled by WooCommerce.
+        if (! current_user_can('manage_woocommerce')) {
+            return;
+        }
+
+        $skip_slot = isset($_POST['_eva_course_skip_slot']) ? 'yes' : 'no';
+        update_post_meta($post_id, '_eva_course_skip_slot', $skip_slot);
     }
 
     /**

@@ -222,6 +222,16 @@ class Plugin {
     }
 
     /**
+     * Check if a product has course skip slot enabled.
+     *
+     * @param int $product_id Product ID.
+     * @return bool
+     */
+    public static function is_course_skip_slot_enabled( int $product_id ) {
+        return 'yes' === get_post_meta( $product_id, '_eva_course_skip_slot', true ) && self::is_course_enabled( $product_id );
+    }
+
+    /**
      * Get booking lead time in days.
      *
      * @return int

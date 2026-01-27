@@ -214,6 +214,7 @@ class Frontend
                 <input type="hidden" name="eva_slot_end" id="eva-slot-end" value="">
                 <input type="hidden" name="eva_skip_slot" id="eva-skip-slot" value="">
 
+                <?php if (Plugin::is_course_skip_slot_enabled($post->ID)) : ?>
                 <!-- Skip slot option for gifts -->
                 <div class="eva-skip-slot-option">
                     <label class="eva-skip-slot-label">
@@ -242,6 +243,7 @@ class Frontend
                         Inserisci un'email valida per il destinatario.
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <?php if (! $has_dates) : ?>
                     <p class="eva-skip-slot-description" style="margin: 0;">
