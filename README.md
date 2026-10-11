@@ -93,9 +93,33 @@ The email includes:
 - Location (if configured)
 - Custom notes (if configured)
 
+### Course purchase confirmation emails
+
+Orders containing only products flagged as Eva courses receive **Conferma acquisto corsi** when marked **Completed**, replacing WooCommerce’s standard completed-order email. The subject and content describe a course purchase, with dates, participant counts, order totals, and billing details. The product’s WooCommerce **Virtual** setting does not affect eligibility; mixed orders retain the standard email.
+
+Configure the email under **WooCommerce → Settings → Emails → Conferma acquisto corsi**:
+
+1. Customize the subject, heading, additional instructions, and HTML/plain-text format. Supported placeholders: `{site_title}`, `{order_number}`, `{order_date}`.
+2. Publish a page containing `[eva_course_bookings_manage]`, then select it under **Pagina gestione prenotazioni**.
+3. Purchases with a date still to choose receive a **Gestisci prenotazione** link. Customers enter the lookup number shown in the email and their purchase email, or the gift-recipient email. The email is sent only to the purchaser.
+
+Without a valid booking page, customers are asked to contact the store. Older purchases without a selectable booking also receive contact instructions. Course summaries read current order-item data, including dates assigned after purchase.
+
+The new email initially inherits the existing completed-order email’s enabled/disabled setting, then has an independent switch. Disabling it means course-only orders receive no completion email. Other transactional emails and order-status automation are unchanged.
+
+HTML/plain templates can be overridden at `yourtheme/woocommerce/emails/course-completed-order.php` and `yourtheme/woocommerce/emails/plain/course-completed-order.php`.
+
 ### Self-test
 
 Go to **WooCommerce → Eva Self Test** to verify the plugin is configured correctly.
+
+For the course confirmation email, run this check in the local development environment:
+
+```bash
+docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/course-completed-email.php
+```
+
+It checks email routing, settings persistence, HTML/plain content, and booking-page fallbacks. Mail is intercepted; temporary products, orders, pages, slots, and email settings are cleaned up afterwards. Tests are excluded from the distributable zip.
 
 ## Frontend
 
@@ -112,6 +136,8 @@ When a product is enabled as a course:
 
 - Docker and Docker Compose installed
 - Ports 8080 and 8081 available
+
+The development stack uses WordPress 6.9 / PHP 8.2, MySQL 9.6.0, and WooCommerce 10.4.0 for new installations. MySQL is accessible inside Docker and through phpMyAdmin; host port 3306 is not required. Keep the database image compatible with existing volumes when changing versions.
 
 ### Startup
 
@@ -155,10 +181,14 @@ When a product is enabled as a course:
 The `up.sh` script automatically runs:
 
 1. Start Docker containers
-2. Install WordPress
-3. Install and configure WooCommerce
-4. Create sample products
-5. Activate Eva Course Bookings plugin
+2. Wait for authenticated database access and the WordPress installer
+3. Install WordPress and WooCommerce if missing
+4. Activate and verify WooCommerce and Eva Course Bookings
+5. Apply development defaults and create sample products for a new setup
+
+Rerun `./bin/up.sh` after a failure: unfinished setup resumes, and existing sample products are reused by slug. Completed setups retain their store settings and installed WooCommerce version. Plugin activation errors stop startup rather than reporting success. Use `./bin/down.sh` to stop while preserving data; `./bin/reset.sh` deletes it.
+
+Run the startup regression checks with `python3 bin/tests/test-startup.py`. They simulate Docker/WP-CLI failures and recovery without starting containers or changing development data.
 
 ### Sample products
 

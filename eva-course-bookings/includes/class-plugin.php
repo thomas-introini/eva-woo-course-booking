@@ -114,9 +114,11 @@ class Plugin {
     public function register_email_classes( $email_classes ) {
         // Include the custom email class.
         require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/emails/class-wc-email-course-reminder.php';
+        require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/emails/class-wc-email-course-completed-order.php';
 
         // Add our email class.
         $email_classes['WC_Email_Course_Reminder'] = new WC_Email_Course_Reminder();
+        $email_classes['WC_Email_Course_Completed_Order'] = new WC_Email_Course_Completed_Order();
 
         return $email_classes;
     }
@@ -219,6 +221,31 @@ class Plugin {
      */
     public static function is_course_enabled( int $product_id ) {
         return 'yes' === get_post_meta( $product_id, '_eva_course_enabled', true );
+    }
+
+    /**
+     * Check whether every product line in an order is an Eva course.
+     *
+     * @param \WC_Order|false $order Order object.
+     * @return bool
+     */
+    public static function is_course_only_order( $order ) {
+        if ( ! $order instanceof \WC_Order ) {
+            return false;
+        }
+
+        $items = $order->get_items( 'line_item' );
+        if ( empty( $items ) ) {
+            return false;
+        }
+
+        foreach ( $items as $item ) {
+            if ( ! self::is_course_enabled( $item->get_product_id() ) ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

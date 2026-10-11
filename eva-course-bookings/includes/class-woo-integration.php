@@ -78,6 +78,7 @@ class Woo_Integration
 
         // Emails.
         add_action('woocommerce_email_order_details', array($this, 'add_email_slot_info'), 5, 4);
+        add_filter('woocommerce_email_enabled_customer_completed_order', array($this, 'filter_completed_order_email_enabled'), 10, 2);
 
         // Store API cart item schema for Block Checkout.
         add_filter('woocommerce_store_api_cart_item_schema', array($this, 'extend_cart_item_schema'));
@@ -692,6 +693,18 @@ class Woo_Integration
     }
 
     /**
+     * Course-only orders use their dedicated completion email, even when disabled.
+     *
+     * @param bool            $enabled Whether the standard email is enabled.
+     * @param \WC_Order|false $order   Order object.
+     * @return bool
+     */
+    public function filter_completed_order_email_enabled($enabled, $order)
+    {
+        return Plugin::is_course_only_order($order) ? false : $enabled;
+    }
+
+    /**
      * Add slot info to emails.
      *
      * @param WC_Order $order         Order object.
@@ -707,16 +720,27 @@ class Woo_Integration
             return;
         }
 
+        $is_course_confirmation = $email && 'eva_course_completed_order' === $email->id;
+        $pending_label = $is_course_confirmation
+            ? __('Data da scegliere', 'eva-course-bookings')
+            : 'Da definire (regalo o prenotazione futura)';
+        $pending_message = 'Ti contatteremo per definire la data del corso.';
+        if ($is_course_confirmation) {
+            $pending_message = $email->get_booking_page_url()
+                ? __('Scegli data e orario dalla pagina Gestisci prenotazione.', 'eva-course-bookings')
+                : __('Contattaci per scegliere data e orario.', 'eva-course-bookings');
+        }
+
         if ($plain_text) {
             echo "\n\n";
             echo "INFORMAZIONI CORSO\n";
             echo "==================\n\n";
 
             foreach ($slot_info as $info) {
-                echo esc_html($info['product']) . "\n";
+                echo wp_strip_all_tags($info['product']) . "\n";
                 if (! empty($info['pending_booking'])) {
-                    echo "Data corso: Da definire (regalo o prenotazione futura)\n";
-                    echo "Ti contatteremo per definire la data del corso.\n";
+                    echo __('Data corso:', 'eva-course-bookings') . ' ' . $pending_label . "\n";
+                    echo $pending_message . "\n";
                 } elseif (! empty($info['start'])) {
                     echo 'Data corso: ' . esc_html(Plugin::format_datetime_italian($info['start']));
                     if (! empty($info['end'])) {
@@ -726,6 +750,9 @@ class Woo_Integration
                         }
                     }
                     echo "\n";
+                } elseif ($is_course_confirmation) {
+                    echo __('Data da concordare', 'eva-course-bookings') . "\n";
+                    echo __('Contattaci per definire la data del corso.', 'eva-course-bookings') . "\n";
                 }
                 echo 'Partecipanti: ' . esc_html($info['quantity']) . "\n\n";
             }
@@ -735,9 +762,9 @@ class Woo_Integration
             <table cellspacing="0" cellpadding="6" border="1" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr style="background-color: #f8f8f8;">
-                        <th style="text-align: left; padding: 10px;">Corso</th>
-                        <th style="text-align: left; padding: 10px;">Data</th>
-                        <th style="text-align: left; padding: 10px;">Partecipanti</th>
+                        <th scope="col" style="text-align: left; padding: 10px;">Corso</th>
+                        <th scope="col" style="text-align: left; padding: 10px;">Data</th>
+                        <th scope="col" style="text-align: left; padding: 10px;">Partecipanti</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -746,8 +773,8 @@ class Woo_Integration
                             <td style="padding: 10px;"><?php echo esc_html($info['product']); ?></td>
                             <td style="padding: 10px;">
                                 <?php if (! empty($info['pending_booking'])) : ?>
-                                    <em>Da definire (regalo o prenotazione futura)</em>
-                                    <br><small>Ti contatteremo per definire la data del corso.</small>
+                                    <em><?php echo esc_html($pending_label); ?></em>
+                                    <br><small><?php echo esc_html($pending_message); ?></small>
                                 <?php elseif (! empty($info['start'])) : ?>
                                     <?php
                                     echo esc_html(Plugin::format_datetime_italian($info['start']));
@@ -758,6 +785,9 @@ class Woo_Integration
                                         }
                                     }
                                     ?>
+                                <?php elseif ($is_course_confirmation) : ?>
+                                    <em><?php esc_html_e('Data da concordare', 'eva-course-bookings'); ?></em>
+                                    <br><small><?php esc_html_e('Contattaci per definire la data del corso.', 'eva-course-bookings'); ?></small>
                                 <?php else : ?>
                                     -
                                 <?php endif; ?>
@@ -796,22 +826,17 @@ class Woo_Integration
 
     /**
      * Get slot info for an order.
-     * First tries to get from order meta, then builds from order item meta.
+     * Read current order items so later assignments cannot leave stale summaries.
      *
      * @param WC_Order $order Order object.
      * @return array Array of slot info.
      */
     private function get_slot_info_for_order($order)
     {
-        // Try to get cached slot info from order meta.
-        $slot_info = $order->get_meta('_eva_slot_info');
-
-        if (!empty($slot_info) && is_array($slot_info)) {
+        $slot_info = array();
+        if (! $order instanceof \WC_Order) {
             return $slot_info;
         }
-
-        // Build from order item meta (fallback for retroactive assignments).
-        $slot_info = array();
 
         foreach ($order->get_items() as $item) {
             $product_id = $item->get_product_id();
@@ -829,20 +854,15 @@ class Woo_Integration
                 $slot_qty = $item->get_quantity();
             }
 
-            // Check if this is a pending booking.
-            if ('yes' === $pending_booking && !$slot_id) {
+            if (!$slot_id) {
                 $slot_info[] = array(
                     'product'         => $item->get_name(),
                     'slot_id'         => null,
                     'start'           => null,
                     'end'             => null,
                     'quantity'        => $slot_qty,
-                    'pending_booking' => true,
+                    'pending_booking' => 'yes' === $pending_booking,
                 );
-                continue;
-            }
-
-            if (!$slot_id) {
                 continue;
             }
 

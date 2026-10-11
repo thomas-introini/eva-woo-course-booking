@@ -23,11 +23,9 @@ services:
         condition: service_healthy
 
   db:
-    image: mysql
+    image: mysql:9.6.0
     container_name: eva-mysql
     restart: unless-stopped
-    ports:
-      - '3306:3306'
     environment:
       MYSQL_DATABASE: wordpress
       MYSQL_USER: wordpress
@@ -36,19 +34,11 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      test:
-        [
-          'CMD',
-          'mysqladmin',
-          'ping',
-          '-h',
-          'localhost',
-          '-u$$MYSQL_USER',
-          '-p$$MYSQL_PASSWORD',
-        ]
+      test: ['CMD-SHELL', 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql --protocol=TCP -h 127.0.0.1 -u"$$MYSQL_USER" "$$MYSQL_DATABASE" -e "SELECT 1" >/dev/null']
       interval: 10s
       timeout: 5s
-      retries: 5
+      start_period: 30s
+      retries: 12
 
   phpmyadmin:
     image: phpmyadmin:latest
@@ -67,7 +57,7 @@ services:
 
   # WP-CLI for setup automation
   wpcli:
-    image: wordpress:cli
+    image: wordpress:cli-php8.2
     container_name: eva-wpcli
     user: 33:33
     environment:
@@ -75,6 +65,7 @@ services:
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: wordpress
       WORDPRESS_DB_NAME: wordpress
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
     volumes:
       - wordpress_data:/var/www/html
       - ./eva-course-bookings:/var/www/html/wp-content/plugins/eva-course-bookings
@@ -82,6 +73,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      wordpress:
+        condition: service_started
     entrypoint: ['tail', '-f', '/dev/null']
 
 volumes:
