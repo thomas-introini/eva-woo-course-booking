@@ -158,25 +158,73 @@ class Slot_Repository
      */
     public function update_slot(int $slot_id, array $data)
     {
-        $slot = get_post($slot_id);
-        if (! $slot || self::POST_TYPE !== $slot->post_type) {
+        global $wpdb;
+
+        $slot = $this->get_slot($slot_id);
+        if (! $slot) {
             return new \WP_Error('invalid_slot', 'Slot non trovato.');
         }
 
-        if (isset($data['start_datetime'])) {
-            $start = sanitize_text_field($data['start_datetime']);
-            $start_time = \DateTime::createFromFormat('Y-m-d H:i:s', $start);
-            if ($start_time) {
-                update_post_meta($slot_id, self::META_START_DATETIME, $start);
+        $now = current_time('mysql');
+        if ($slot['start_datetime'] < $now) {
+            return new \WP_Error('past_slot', 'Gli slot passati non possono essere modificati.');
+        }
+
+        $start = $data['start_datetime'] ?? $slot['start_datetime'];
+        $end = $data['end_datetime'] ?? $slot['end_datetime'];
+        $dates_changed = $start !== $slot['start_datetime'] || $end !== $slot['end_datetime'];
+        if ($dates_changed) {
+            if ($this->has_bookings($slot_id)) {
+                return new \WP_Error('booked_dates', 'Data e orari non possono cambiare: lo slot ha uno storico prenotazioni.');
+            }
+            foreach (array($start, $end) as $datetime) {
+                if ('' === $datetime) {
+                    continue;
+                }
+                $parsed = is_string($datetime) ? \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $datetime, wp_timezone()) : false;
+                if (! $parsed || $parsed->format('Y-m-d H:i:s') !== $datetime) {
+                    return new \WP_Error('invalid_datetime', 'Data o ora non valida.');
+                }
+            }
+            if ('' === $start || $start < $now || ('' !== $end && $end <= $start)) {
+                return new \WP_Error('invalid_datetime', 'La data deve essere futura e la fine deve seguire l’inizio.');
             }
         }
 
-        if (isset($data['end_datetime'])) {
-            update_post_meta($slot_id, self::META_END_DATETIME, sanitize_text_field($data['end_datetime']));
+        if (isset($data['capacity'])) {
+            $capacity = filter_var($data['capacity'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+            if (false === $capacity || $capacity < $slot['booked']) {
+                return new \WP_Error('invalid_capacity', 'La capacità deve essere positiva e non inferiore ai posti prenotati.');
+            }
         }
 
-        if (isset($data['capacity'])) {
-            update_post_meta($slot_id, self::META_CAPACITY, absint($data['capacity']));
+        if (isset($data['status']) && ! in_array($data['status'], array('open', 'closed'), true)) {
+            return new \WP_Error('invalid_status', 'Stato slot non valido.');
+        }
+
+        if (isset($capacity)) {
+            // Keep capacity changes safe if checkout reserves seats concurrently.
+            $updated = $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->postmeta} capacity
+                 INNER JOIN {$wpdb->postmeta} booked ON capacity.post_id = booked.post_id
+                 SET capacity.meta_value = %d
+                 WHERE capacity.post_id = %d AND capacity.meta_key = %s AND booked.meta_key = %s
+                 AND CAST(booked.meta_value AS UNSIGNED) <= %d",
+                $capacity, $slot_id, self::META_CAPACITY, self::META_BOOKED, $capacity
+            ));
+            wp_cache_delete($slot_id, 'post_meta');
+            $saved_slot = $this->get_slot($slot_id);
+            if (false === $updated || ! $saved_slot || $saved_slot['capacity'] !== $capacity || $saved_slot['booked'] > $capacity) {
+                return new \WP_Error('capacity_changed', 'Impossibile aggiornare la capacità. Ricarica lo slot e riprova.');
+            }
+        }
+
+        if (isset($data['start_datetime'])) {
+            update_post_meta($slot_id, self::META_START_DATETIME, $start);
+        }
+
+        if (isset($data['end_datetime'])) {
+            update_post_meta($slot_id, self::META_END_DATETIME, $end);
         }
 
         if (isset($data['status']) && in_array($data['status'], array('open', 'closed'), true)) {
@@ -186,6 +234,25 @@ class Slot_Repository
         self::log(sprintf('Slot updated: ID %d', $slot_id));
 
         return true;
+    }
+
+    /**
+     * Include historical reservations even after their seats have been released.
+     */
+    public function has_bookings(int $slot_id)
+    {
+        global $wpdb;
+
+        if ((int) get_post_meta($slot_id, self::META_BOOKED, true) > 0) {
+            return true;
+        }
+
+        return (bool) $wpdb->get_var($wpdb->prepare(
+            "SELECT 1 FROM {$wpdb->prefix}woocommerce_order_itemmeta meta
+             INNER JOIN {$wpdb->prefix}woocommerce_order_items item ON item.order_item_id = meta.order_item_id
+             WHERE meta.meta_key = '_eva_slot_id' AND meta.meta_value = %s LIMIT 1",
+            $slot_id
+        ));
     }
 
     /**
@@ -337,7 +404,7 @@ class Slot_Repository
 
         $args = array(
             'post_type'      => self::POST_TYPE,
-            'posts_per_page' => isset($filters['per_page']) ? absint($filters['per_page']) : 50,
+            'posts_per_page' => isset($filters['per_page']) ? (-1 === (int) $filters['per_page'] ? -1 : absint($filters['per_page'])) : 50,
             'paged'          => isset($filters['page']) ? absint($filters['page']) : 1,
             'post_status'    => 'publish',
             'meta_key'       => self::META_START_DATETIME,

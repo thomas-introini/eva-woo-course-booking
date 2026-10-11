@@ -42,6 +42,239 @@
   padding: 20px;
 }
 
+/* Monthly calendar */
+#eva-calendar-filters,
+.eva-calendar-toolbar,
+.eva-calendar-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.eva-calendar-toolbar {
+  justify-content: space-between;
+}
+
+.eva-calendar-toolbar h2 {
+  margin: 0;
+}
+
+#eva-calendar-message {
+  min-height: 24px;
+}
+
+.eva-calendar-scroll,
+.eva-bookings-table-scroll {
+  overflow-x: auto;
+}
+
+.eva-calendar-grid {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 900px;
+}
+
+.eva-calendar-grid th,
+.eva-calendar-grid td {
+  border: 1px solid #dcdcde;
+  padding: 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.eva-calendar-grid th {
+  background: #f6f7f7;
+}
+
+.eva-calendar-grid td {
+  height: 130px;
+}
+
+.eva-calendar-grid time {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.eva-calendar-creatable {
+  cursor: pointer;
+}
+
+.eva-calendar-creatable:hover {
+  background: #f0f6fc;
+}
+
+.eva-calendar-create {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #135e96;
+  cursor: pointer;
+  font: inherit;
+}
+
+.eva-calendar-create:focus-visible {
+  outline: 2px solid #2271b1;
+  outline-offset: 2px;
+}
+
+.eva-calendar-create span {
+  font-size: 12px;
+}
+
+.eva-calendar-outside {
+  background: #f6f7f7;
+  color: #646970;
+}
+
+.eva-calendar-today {
+  background: #f0f6fc;
+}
+
+.eva-calendar-today time {
+  background: #2271b1;
+  color: #fff;
+  border-radius: 50%;
+  padding: 3px 7px;
+}
+
+.eva-calendar-slot {
+  display: block;
+  padding: 8px;
+  margin-bottom: 6px;
+  border: 1px solid #c5d9ed;
+  border-left: 3px solid #2271b1;
+  border-radius: 3px;
+  background: #f0f6fc;
+  color: #1d2327;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.eva-calendar-slot:hover {
+  background: #e1edf8;
+  color: #135e96;
+}
+
+.eva-calendar-slot strong,
+.eva-calendar-slot span {
+  display: block;
+}
+
+.eva-calendar-slot-status {
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.eva-calendar-closed {
+  background: #f6f7f7;
+  border-color: #c3c4c7;
+}
+
+.eva-calendar-past {
+  border-left-style: dashed;
+}
+
+/* Native dialog provides focus trapping and makes the page behind it inert. */
+body.eva-dialog-open {
+  overflow: hidden;
+}
+
+.eva-slot-dialog {
+  width: calc(100% - 40px);
+  max-width: 1180px;
+  max-height: 90vh;
+  padding: 0;
+  border: 1px solid #c3c4c7;
+  border-radius: 6px;
+  color: #1d2327;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.eva-slot-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.eva-slot-create-dialog {
+  max-width: 700px;
+}
+
+#eva-create-slot-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+#eva-create-product {
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 15px;
+}
+
+.eva-slot-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.eva-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dcdcde;
+}
+
+.eva-dialog-header h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.eva-dialog-close {
+  font-size: 22px !important;
+}
+
+.eva-dialog-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.eva-bookings-table-scroll .wp-list-table {
+  min-width: 1000px;
+}
+
+.eva-slot-edit-section {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #dcdcde;
+  border-radius: 3px;
+}
+
+.eva-slot-edit-section summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.eva-reservation-move select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.eva-move-review {
+  font-weight: 600;
+}
+
 /* Pending badge */
 .eva-pending-badge {
   display: inline-block;
@@ -193,6 +426,7 @@
 }
 
 .eva-form-field input[type='text'],
+.eva-form-field input[type='date'],
 .eva-form-field input[type='time'],
 .eva-form-field input[type='number'] {
   width: 100%;

@@ -54,11 +54,30 @@ In the "Course dates" section of the product:
 
 Go to **WooCommerce → Courses** to:
 
+- Browse the monthly **Calendario** view (the default tab), with course/status filters
+- Click a calendar slot to see its details and complete reservation history in a modal
+- Click a day (or its **+ Slot** button) from today onwards to create a slot in a modal
 - View all slots
 - Filter by product, status, or date
 - Manage slots from a single page
 - View booking details for each slot
 - Send reminder emails to participants
+
+The creation modal prefills the clicked date and the filtered course, when selected. Choose a course, start time, optional end time, and capacity. The calendar refreshes to show the new open slot, adjusting course/status filters if needed. Creation requires a future start time; an optional end time must be later on the same day.
+
+The slot details modal also offers CSV export and editing for upcoming slots. Date and time are locked when a slot has reserved seats or reservation history, including cancelled/refunded orders. Capacity can still change, but cannot fall below reserved seats; past slots are read-only. These editing rules also apply in the product editor.
+
+Use **Sposta prenotazione** on an active reservation to move its entire participant group to another future, open slot of the same course. Choose a destination, review its date and available seats, and confirm. Slots with insufficient capacity are disabled. The modal and calendar refresh after the move, with a link to open the destination slot. Seats and order dates update together, and an internal order note records the change. No email is sent automatically; use the destination slot's reminder action when needed. Cancelled/refunded/released reservations and past slots cannot be moved.
+
+Historical participant totals include cancelled/refunded orders and can differ from the slot's current reserved-seat count. Reminder recipients follow the existing booking-history behavior; the bulk confirmation explicitly includes cancelled/refunded orders.
+
+Run the calendar/admin regression check in the local development environment:
+
+```bash
+docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/admin-calendar.php
+```
+
+Pass `legacy` or `hpos` after the file path to check either order-storage mode without changing the store's storage setting. The check intercepts mail, cleans up temporary products/orders/slots, and restores settings.
 
 ### Bulk enable
 

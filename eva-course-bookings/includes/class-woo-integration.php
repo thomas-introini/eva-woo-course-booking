@@ -831,7 +831,7 @@ class Woo_Integration
      * @param WC_Order $order Order object.
      * @return array Array of slot info.
      */
-    private function get_slot_info_for_order($order)
+    public function get_slot_info_for_order($order)
     {
         $slot_info = array();
         if (! $order instanceof \WC_Order) {
@@ -841,8 +841,8 @@ class Woo_Integration
         foreach ($order->get_items() as $item) {
             $product_id = $item->get_product_id();
 
-            // Check if this is a course product.
-            if (! Plugin::is_course_enabled($product_id)) {
+            // Preserve existing bookings even if the product was later disabled.
+            if (! Plugin::is_course_enabled($product_id) && ! $item->get_meta('_eva_slot_id')) {
                 continue;
             }
 

@@ -60,6 +60,8 @@ class Admin
         add_action('wp_ajax_eva_admin_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_eva_admin_send_reminder', array($this, 'ajax_send_slot_reminder'));
         add_action('wp_ajax_eva_admin_send_reminder_all', array($this, 'ajax_send_slot_reminder_all'));
+        add_action('wp_ajax_eva_admin_get_calendar_slots', array($this, 'ajax_get_calendar_slots'));
+        add_action('wp_ajax_eva_admin_get_slot_details', array($this, 'ajax_get_slot_details'));
 
         // Self-test page.
         add_action('admin_menu', array($this, 'add_selftest_page'), 99);
@@ -178,7 +180,7 @@ class Admin
         }
 
         // Check if we're on the settings tab.
-        $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'prenotazioni';
+        $current_tab = $this->get_current_tab();
         $is_settings_tab = $is_plugin_page && 'impostazioni' === $current_tab;
 
         if (! $is_product_edit && ! $is_plugin_page && ! $is_order_edit) {
@@ -430,9 +432,10 @@ class Admin
      */
     private function render_slot_row($slot)
     {
-        $start_dt   = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime']);
-        $end_dt     = $slot['end_datetime'] ? \DateTime::createFromFormat('Y-m-d H:i:s', $slot['end_datetime']) : null;
-        $is_past    = $start_dt && $start_dt < new \DateTime();
+        $slot['dates_locked'] = $this->slot_repository->has_bookings($slot['id']);
+        $start_dt   = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime'], wp_timezone());
+        $end_dt     = $slot['end_datetime'] ? \DateTime::createFromFormat('Y-m-d H:i:s', $slot['end_datetime'], wp_timezone()) : null;
+        $is_past    = $slot['start_datetime'] < current_time('mysql');
         $status_label = 'open' === $slot['status'] ? 'Aperto' : 'Chiuso';
         $status_class = 'open' === $slot['status'] ? 'eva-status-open' : 'eva-status-closed';
 
@@ -552,7 +555,7 @@ class Admin
      */
     private function get_current_tab()
     {
-        return isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'prenotazioni';
+        return isset($_GET['tab']) && is_string($_GET['tab']) ? sanitize_key($_GET['tab']) : 'calendario';
     }
 
     /**
@@ -567,6 +570,7 @@ class Admin
         $pending_badge = $pending_count > 0 ? ' <span class="eva-pending-badge">' . $pending_count . '</span>' : '';
 
         $tabs = array(
+            'calendario'    => 'Calendario',
             'prenotazioni'  => 'Prenotazioni',
             'da_prenotare'  => 'Da prenotare' . $pending_badge,
             'corsi'         => 'Corsi abilitati',
@@ -605,14 +609,224 @@ class Admin
                         $this->render_settings_content();
                         break;
                     case 'prenotazioni':
-                    default:
                         $this->render_bookings_content();
+                        break;
+                    case 'calendario':
+                    default:
+                        $this->render_calendar_content();
                         break;
                 }
                 ?>
             </div>
         </div>
     <?php
+    }
+
+    /**
+     * Validate calendar requests before querying slot metadata.
+     */
+    private function get_calendar_filters($request)
+    {
+        $month = $request['month'] ?? current_time('Y-m');
+        $product_id = $request['product_id'] ?? '0';
+        $status = $request['status'] ?? '';
+        if (! is_string($month) || ! preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/', $month) || (int) substr($month, 0, 4) < 1 ||
+            ! is_scalar($product_id) || ! preg_match('/^[0-9]+$/', (string) $product_id) ||
+            ! in_array($status, array('', 'open', 'closed'), true)) {
+            return new \WP_Error('invalid_filters', 'Mese o filtri non validi.');
+        }
+
+        return array('month' => $month, 'product_id' => absint($product_id), 'status' => $status);
+    }
+
+    public function render_calendar_content()
+    {
+        $filters = $this->get_calendar_filters($_GET);
+        if (is_wp_error($filters)) {
+            echo '<div class="notice notice-error"><p>' . esc_html($filters->get_error_message()) . '</p></div>';
+            $filters = $this->get_calendar_filters(array());
+        }
+        $courses = $this->get_course_products();
+        ?>
+        <div id="eva-calendar-content">
+            <form id="eva-calendar-filters" class="eva-filters" method="get">
+                <input type="hidden" name="page" value="eva-course-bookings">
+                <input type="hidden" name="tab" value="calendario">
+                <input type="hidden" name="month" value="<?php echo esc_attr($filters['month']); ?>">
+                <label for="eva-calendar-product">Corso</label>
+                <select id="eva-calendar-product" name="product_id">
+                    <option value="0">Tutti i corsi</option>
+                    <?php foreach ($courses as $product) : ?>
+                        <option value="<?php echo esc_attr($product->ID); ?>" <?php selected($filters['product_id'], $product->ID); ?>><?php echo esc_html($product->post_title); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <label for="eva-calendar-status">Stato</label>
+                <select id="eva-calendar-status" name="status">
+                    <option value="">Tutti gli stati</option>
+                    <option value="open" <?php selected($filters['status'], 'open'); ?>>Aperto</option>
+                    <option value="closed" <?php selected($filters['status'], 'closed'); ?>>Chiuso</option>
+                </select>
+                <button type="submit" class="button">Filtra</button>
+            </form>
+            <p id="eva-calendar-message" role="status" aria-live="polite"></p>
+            <div id="eva-calendar-view"><?php $this->render_calendar_month($filters); ?></div>
+        </div>
+        <dialog id="eva-slot-details-modal" class="eva-slot-dialog" aria-labelledby="eva-slot-dialog-title">
+            <div class="eva-dialog-header">
+                <h2 id="eva-slot-dialog-title">Dettaglio slot e prenotazioni</h2>
+                <button type="button" class="button eva-dialog-close" aria-label="Chiudi dettagli slot" autofocus>&times;</button>
+            </div>
+            <div class="eva-dialog-body" aria-live="polite"></div>
+        </dialog>
+        <dialog id="eva-slot-create-modal" class="eva-slot-dialog eva-slot-create-dialog" aria-labelledby="eva-slot-create-title">
+            <div class="eva-dialog-header">
+                <h2 id="eva-slot-create-title">Crea slot</h2>
+                <button type="button" class="button eva-dialog-close" aria-label="Chiudi creazione slot">&times;</button>
+            </div>
+            <div class="eva-dialog-body">
+                <?php if (empty($courses)) : ?>
+                    <p>Abilita e pubblica almeno un corso prima di creare uno slot.</p>
+                <?php else : ?>
+                    <form id="eva-create-slot-form">
+                        <fieldset>
+                            <div class="eva-form-field">
+                                <label for="eva-create-product">Corso *</label>
+                                <select id="eva-create-product" name="product_id" required autofocus>
+                                    <option value="">Scegli un corso</option>
+                                    <?php foreach ($courses as $product) : ?>
+                                        <option value="<?php echo esc_attr($product->ID); ?>"><?php echo esc_html($product->post_title); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="eva-form-row">
+                                <div class="eva-form-field">
+                                    <label for="eva-create-date">Data *</label>
+                                    <input type="date" id="eva-create-date" name="date" min="<?php echo esc_attr(current_time('Y-m-d')); ?>" required>
+                                </div>
+                                <div class="eva-form-field">
+                                    <label for="eva-create-time">Ora inizio *</label>
+                                    <input type="time" id="eva-create-time" name="time" required>
+                                </div>
+                                <div class="eva-form-field">
+                                    <label for="eva-create-end-time">Ora fine</label>
+                                    <input type="time" id="eva-create-end-time" name="end_time">
+                                </div>
+                                <div class="eva-form-field">
+                                    <label for="eva-create-capacity">Posti *</label>
+                                    <input type="number" id="eva-create-capacity" name="capacity" min="1" step="1" value="10" required>
+                                </div>
+                            </div>
+                            <p class="description">Lo slot sarà aperto alle prenotazioni. L’eventuale ora di fine deve seguire l’inizio nello stesso giorno.</p>
+                        </fieldset>
+                        <p id="eva-create-slot-feedback" role="status" aria-live="polite"></p>
+                        <div class="eva-modal-actions">
+                            <button type="submit" class="button button-primary">Crea slot</button>
+                            <button type="button" class="button eva-create-cancel">Annulla</button>
+                        </div>
+                    </form>
+                <?php endif; ?>
+            </div>
+        </dialog>
+        <?php
+    }
+
+    private function render_calendar_month($filters)
+    {
+        $month = new \DateTimeImmutable($filters['month'] . '-01 00:00:00', wp_timezone());
+        $result = $this->slot_repository->get_all_slots(array(
+            'product_id' => $filters['product_id'],
+            'status' => $filters['status'],
+            'date_from' => $month->format('Y-m-d'),
+            'date_to' => $month->format('Y-m-t'),
+            'per_page' => -1,
+        ));
+        $days = array();
+        foreach ($result['slots'] as $slot) {
+            $days[substr($slot['start_datetime'], 0, 10)][] = $slot;
+        }
+        $first_day = $month->modify('-' . ((int) $month->format('N') - 1) . ' days');
+        $today = current_time('Y-m-d');
+        $now = current_time('mysql');
+        $months = array('Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre');
+        ?>
+        <div class="eva-calendar-toolbar">
+            <h2 id="eva-calendar-heading" tabindex="-1"><?php echo esc_html($months[(int) $month->format('n') - 1] . ' ' . $month->format('Y')); ?></h2>
+            <div class="eva-calendar-navigation">
+                <?php foreach (array('Mese precedente' => $month->modify('-1 month')->format('Y-m'), 'Oggi' => current_time('Y-m'), 'Mese successivo' => $month->modify('+1 month')->format('Y-m')) as $label => $target) : ?>
+                    <a class="button eva-calendar-nav" data-month="<?php echo esc_attr($target); ?>" href="<?php echo esc_url(add_query_arg(array_merge($filters, array('month' => $target, 'page' => 'eva-course-bookings', 'tab' => 'calendario')), admin_url('admin.php'))); ?>"><?php echo esc_html($label); ?></a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <p class="description">Clicca su un giorno da oggi in poi per creare uno slot, oppure su uno slot per vedere le prenotazioni.</p>
+        <p class="description">Posti prenotati / capacità · Aperto · Chiuso · Completo · Passato</p>
+        <?php if (empty($result['slots'])) : ?><p>Nessuno slot trovato per questo mese.</p><?php endif; ?>
+        <div class="eva-calendar-scroll" role="region" aria-label="Calendario mensile corsi" tabindex="0">
+            <table class="eva-calendar-grid" aria-labelledby="eva-calendar-heading">
+                <thead><tr><?php foreach (array('Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica') as $weekday) : ?><th scope="col"><?php echo esc_html($weekday); ?></th><?php endforeach; ?></tr></thead>
+                <tbody>
+                    <?php for ($week = 0; $week < 6; $week++) : ?>
+                        <tr>
+                            <?php for ($weekday = 0; $weekday < 7; $weekday++) :
+                                $day = $first_day->modify('+' . ($week * 7 + $weekday) . ' days');
+                                $date = $day->format('Y-m-d');
+                                $in_month = $day->format('Y-m') === $filters['month'];
+                                $can_create = $in_month && $date >= $today;
+                                ?>
+                                <td class="<?php echo $in_month ? 'eva-calendar-day' : 'eva-calendar-outside'; ?> <?php echo $date === $today ? 'eva-calendar-today' : ''; ?> <?php echo $can_create ? 'eva-calendar-creatable' : ''; ?>" <?php if ($can_create) : ?>data-create-date="<?php echo esc_attr($date); ?>"<?php endif; ?>>
+                                    <?php if ($can_create) : ?><button type="button" class="eva-calendar-create" aria-label="<?php echo esc_attr('Crea slot per il ' . $day->format('d/m/Y')); ?>"><?php endif; ?>
+                                        <time datetime="<?php echo esc_attr($date); ?>" <?php if ($date === $today) : ?>aria-current="date"<?php endif; ?>><?php echo esc_html($day->format('j')); ?></time>
+                                    <?php if ($can_create) : ?><span aria-hidden="true">+ Slot</span></button><?php endif; ?>
+                                    <?php foreach ($in_month ? ($days[$date] ?? array()) : array() as $slot) :
+                                        $product = get_post($slot['product_id']);
+                                        $name = $product ? $product->post_title : 'Prodotto eliminato';
+                                        $past = $slot['start_datetime'] < $now;
+                                        $closed = 'closed' === $slot['status'];
+                                        ?>
+                                        <a class="eva-calendar-slot <?php echo $closed ? 'eva-calendar-closed' : ''; ?> <?php echo $past ? 'eva-calendar-past' : ''; ?>"
+                                            data-slot-id="<?php echo esc_attr($slot['id']); ?>" href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni&view=slot&slot_id=' . $slot['id'])); ?>">
+                                            <strong><?php echo esc_html(substr($slot['start_datetime'], 11, 5) . ' · ' . $name); ?></strong>
+                                            <span><?php echo esc_html($slot['booked'] . ' / ' . $slot['capacity'] . ' posti'); ?></span>
+                                            <span class="eva-calendar-slot-status"><?php echo $closed ? 'Chiuso' : 'Aperto'; ?><?php echo $slot['remaining'] <= 0 ? ' · Completo' : ''; ?><?php echo $past ? ' · Passato' : ''; ?></span>
+                                        </a>
+                                    <?php endforeach; ?>
+                                </td>
+                            <?php endfor; ?>
+                        </tr>
+                    <?php endfor; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    public function ajax_get_calendar_slots()
+    {
+        check_ajax_referer('eva_admin_nonce', 'nonce');
+        if (! current_user_can('manage_woocommerce')) {
+            wp_send_json_error(array('message' => 'Permesso negato.'), 403);
+        }
+        $filters = $this->get_calendar_filters($_POST);
+        if (is_wp_error($filters)) {
+            wp_send_json_error(array('message' => $filters->get_error_message()), 400);
+        }
+        ob_start();
+        $this->render_calendar_month($filters);
+        wp_send_json_success(array('html' => ob_get_clean(), 'month' => $filters['month']));
+    }
+
+    public function ajax_get_slot_details()
+    {
+        check_ajax_referer('eva_admin_nonce', 'nonce');
+        if (! current_user_can('manage_woocommerce')) {
+            wp_send_json_error(array('message' => 'Permesso negato.'), 403);
+        }
+        $slot_id = isset($_POST['slot_id']) && is_scalar($_POST['slot_id']) ? filter_var($_POST['slot_id'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1))) : false;
+        if (! $slot_id || ! $this->slot_repository->get_slot($slot_id)) {
+            wp_send_json_error(array('message' => 'Slot non trovato.'), 404);
+        }
+        ob_start();
+        $this->render_slot_bookings_content($slot_id, true);
+        wp_send_json_success(array('html' => ob_get_clean()));
     }
 
     /**
@@ -733,7 +947,7 @@ class Admin
      *
      * @param int $slot_id Slot ID.
      */
-    private function render_slot_bookings_content($slot_id)
+    private function render_slot_bookings_content($slot_id, $in_modal = false)
     {
         $slot = $this->slot_repository->get_slot($slot_id);
 
@@ -744,18 +958,20 @@ class Admin
 
         $product = get_post($slot['product_id']);
         $product_name = $product ? $product->post_title : 'Prodotto eliminato';
-        $start_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime']);
-        $end_dt = $slot['end_datetime'] ? \DateTime::createFromFormat('Y-m-d H:i:s', $slot['end_datetime']) : null;
+        $start_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime'], wp_timezone());
+        $end_dt = $slot['end_datetime'] ? \DateTime::createFromFormat('Y-m-d H:i:s', $slot['end_datetime'], wp_timezone()) : null;
 
         // Get all orders with items booked for this slot.
         $bookings = $this->get_orders_for_slot($slot_id);
     ?>
         <div class="eva-slot-bookings-content">
+            <?php if (! $in_modal) : ?>
             <p>
                 <a href="<?php echo esc_url(admin_url('admin.php?page=eva-course-bookings&tab=prenotazioni')); ?>" class="button">← Torna alla lista</a>
             </p>
 
             <h2>Dettaglio slot</h2>
+            <?php endif; ?>
 
             <div class="eva-slot-info-card">
                 <table class="form-table">
@@ -805,11 +1021,47 @@ class Admin
                 </table>
             </div>
 
-            <h2>Prenotazioni (<?php echo count($bookings); ?>)</h2>
+            <?php if ($in_modal && $slot['start_datetime'] >= current_time('mysql')) :
+                $dates_locked = $this->slot_repository->has_bookings($slot_id);
+                ?>
+                <details class="eva-slot-edit-section">
+                    <summary>Modifica slot</summary>
+                    <input type="hidden" id="eva-edit-slot-id" value="<?php echo esc_attr($slot_id); ?>">
+                    <?php if ($dates_locked) : ?><p>Data e orari bloccati: lo slot ha uno storico prenotazioni.</p><?php endif; ?>
+                    <div class="eva-form-row">
+                        <div class="eva-form-field">
+                            <label for="eva-edit-slot-date">Data *</label>
+                            <input type="date" id="eva-edit-slot-date" min="<?php echo esc_attr(current_time('Y-m-d')); ?>" value="<?php echo esc_attr($start_dt ? $start_dt->format('Y-m-d') : ''); ?>" <?php disabled($dates_locked); ?>>
+                        </div>
+                        <div class="eva-form-field">
+                            <label for="eva-edit-slot-time">Ora inizio *</label>
+                            <input type="time" id="eva-edit-slot-time" value="<?php echo esc_attr($start_dt ? $start_dt->format('H:i') : ''); ?>" <?php disabled($dates_locked); ?>>
+                        </div>
+                        <div class="eva-form-field">
+                            <label for="eva-edit-slot-end-time">Ora fine</label>
+                            <input type="time" id="eva-edit-slot-end-time" value="<?php echo esc_attr($end_dt ? $end_dt->format('H:i') : ''); ?>" <?php disabled($dates_locked); ?>>
+                        </div>
+                        <div class="eva-form-field">
+                            <label for="eva-edit-slot-capacity">Posti *</label>
+                            <input type="number" id="eva-edit-slot-capacity" min="<?php echo esc_attr(max(1, $slot['booked'])); ?>" step="1" value="<?php echo esc_attr($slot['capacity']); ?>">
+                        </div>
+                    </div>
+                    <p>
+                        <button type="button" id="eva-save-slot-btn" class="button button-primary">Salva modifiche</button>
+                        <button type="button" class="button eva-toggle-status" data-slot-id="<?php echo esc_attr($slot_id); ?>" data-current-status="<?php echo esc_attr($slot['status']); ?>"><?php echo 'open' === $slot['status'] ? 'Chiudi slot' : 'Apri slot'; ?></button>
+                    </p>
+                </details>
+            <?php elseif ($in_modal) : ?>
+                <p class="description">Slot passato: modifiche non disponibili.</p>
+            <?php endif; ?>
+
+            <h2>Storico prenotazioni (<?php echo count($bookings); ?>)</h2>
+            <p class="description">Lo storico include ordini annullati e rimborsati. I posti attualmente prenotati sono indicati nel riepilogo slot.</p>
 
             <?php if (empty($bookings)) : ?>
                 <p>Nessuna prenotazione per questo slot.</p>
             <?php else : ?>
+                <div class="eva-bookings-table-scroll" role="region" aria-label="Storico prenotazioni" tabindex="0">
                 <table class="wp-list-table widefat fixed striped" id="eva-slot-bookings-table"
                     data-slot-id="<?php echo esc_attr($slot_id); ?>"
                     data-course-name="<?php echo esc_attr($product_name); ?>"
@@ -833,6 +1085,8 @@ class Admin
                             <tr data-order-id="<?php echo esc_attr($booking['order_id']); ?>"
                                 data-customer-name="<?php echo esc_attr($booking['customer_name']); ?>"
                                 data-customer-email="<?php echo esc_attr($booking['customer_email']); ?>"
+                                data-item-id="<?php echo esc_attr($booking['item_id']); ?>"
+                                data-product-id="<?php echo esc_attr($booking['product_id']); ?>"
                                 data-quantity="<?php echo esc_attr($booking['quantity']); ?>">
                                 <td>
                                     <a href="<?php echo esc_url($booking['edit_url']); ?>">
@@ -862,13 +1116,16 @@ class Admin
                                             ✉ Promemoria
                                         </button>
                                     <?php endif; ?>
+                                    <?php if ($in_modal && $booking['can_move']) : ?>
+                                        <button type="button" class="button button-small eva-move-reservation" aria-label="<?php echo esc_attr(sprintf('Sposta prenotazione ordine #%d, %d partecipanti', $booking['order_id'], $booking['quantity'])); ?>">Sposta prenotazione</button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="5" style="text-align: right;"><strong>Totale partecipanti:</strong></th>
+                            <th colspan="5" style="text-align: right;"><strong>Totale partecipanti (storico):</strong></th>
                             <th colspan="3">
                                 <strong>
                                     <?php
@@ -880,6 +1137,7 @@ class Admin
                         </tr>
                     </tfoot>
                 </table>
+                </div>
 
                 <div class="eva-slot-actions" style="margin-top: 20px;">
                     <h3>Azioni</h3>
@@ -899,6 +1157,22 @@ class Admin
                 </div>
             <?php endif; ?>
         </div>
+        <?php if ($in_modal) : ?>
+            <section class="eva-reservation-move" aria-labelledby="eva-move-heading" hidden>
+                <button type="button" class="button eva-move-cancel">← Torna alle prenotazioni</button>
+                <h2 id="eva-move-heading">Sposta prenotazione</h2>
+                <p class="eva-move-summary"></p>
+                <p>Corso: <strong><?php echo esc_html($product_name); ?></strong></p>
+                <p>Slot attuale: <strong><?php echo esc_html(Plugin::format_datetime_italian($slot['start_datetime'])); ?></strong></p>
+                <label for="eva-move-destination"><strong>Nuovo slot dello stesso corso</strong></label>
+                <select id="eva-move-destination" disabled><option value="">Caricamento slot...</option></select>
+                <p class="eva-move-feedback" role="status" aria-live="polite"></p>
+                <button type="button" class="button eva-move-reload">Aggiorna disponibilità</button>
+                <p class="eva-move-review"></p>
+                <p class="description">Lo spostamento include tutti i partecipanti di questa prenotazione. La disponibilità viene verificata al salvataggio. Nessuna email automatica: puoi inviare un promemoria dallo slot di destinazione.</p>
+                <button type="button" class="button button-primary eva-move-confirm" disabled>Conferma spostamento</button>
+            </section>
+        <?php endif; ?>
     <?php
     }
 
@@ -927,6 +1201,7 @@ class Admin
         }
 
         $bookings = array();
+        $slot = $this->slot_repository->get_slot($slot_id);
 
         foreach ($order_item_ids as $order_item_id) {
             // Get the order ID for this item.
@@ -946,17 +1221,23 @@ class Admin
                 continue;
             }
 
-            // Get quantity from item meta.
-            $quantity = wc_get_order_item_meta($order_item_id, '_eva_slot_qty', true);
+            $item = $order->get_item($order_item_id);
+            if (! $item instanceof \WC_Order_Item_Product) {
+                continue;
+            }
+            // Use the quantity that actually reserved seats.
+            $quantity = $item->get_meta('_eva_slot_qty');
             if (!$quantity) {
-                $item = $order->get_item($order_item_id);
-                $quantity = $item ? $item->get_quantity() : 1;
+                $quantity = $item->get_quantity();
             }
 
             // Build edit URL (works with HPOS).
             $edit_url = $order->get_edit_order_url();
 
             $bookings[] = array(
+                'item_id'        => $item->get_id(),
+                'product_id'     => $item->get_product_id(),
+                'can_move'       => $this->can_move_reservation($order, $item, $slot),
                 'order_id'       => $order->get_id(),
                 'order_date'     => $order->get_date_created() ? $order->get_date_created()->format('d/m/Y H:i') : '',
                 'customer_name'  => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
@@ -976,6 +1257,15 @@ class Admin
         return $bookings;
     }
 
+    private function can_move_reservation($order, $item, $slot)
+    {
+        return $item instanceof \WC_Order_Item_Product && $slot &&
+            ! $order->has_status(array('cancelled', 'refunded', 'failed', 'trash')) &&
+            'yes' === $item->get_meta('_eva_seats_reserved') &&
+            (int) $slot['product_id'] === $item->get_product_id() &&
+            $slot['start_datetime'] >= current_time('mysql');
+    }
+
     /**
      * Render a slot row in the admin page.
      *
@@ -985,9 +1275,9 @@ class Admin
     {
         $product      = get_post($slot['product_id']);
         $product_name = $product ? $product->post_title : 'Prodotto eliminato';
-        $start_dt     = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime']);
-        $end_dt       = $slot['end_datetime'] ? \DateTime::createFromFormat('Y-m-d H:i:s', $slot['end_datetime']) : null;
-        $is_past      = $start_dt && $start_dt < new \DateTime();
+        $start_dt     = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime'], wp_timezone());
+        $end_dt       = $slot['end_datetime'] ? \DateTime::createFromFormat('Y-m-d H:i:s', $slot['end_datetime'], wp_timezone()) : null;
+        $is_past      = $slot['start_datetime'] < current_time('mysql');
         $status_label = 'open' === $slot['status'] ? 'Aperto' : 'Chiuso';
         $status_class = 'open' === $slot['status'] ? 'eva-status-open' : 'eva-status-closed';
     ?>
@@ -1801,27 +2091,46 @@ class Admin
             wp_send_json_error(array('message' => 'Permesso negato.'));
         }
 
-        $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
-        $date       = isset($_POST['date']) ? sanitize_text_field(wp_unslash($_POST['date'])) : '';
-        $time       = isset($_POST['time']) ? sanitize_text_field(wp_unslash($_POST['time'])) : '';
-        $end_time   = isset($_POST['end_time']) ? sanitize_text_field(wp_unslash($_POST['end_time'])) : '';
-        $capacity   = isset($_POST['capacity']) ? absint($_POST['capacity']) : 0;
-
-        if (! $product_id || ! $date || ! $time || ! $capacity) {
-            wp_send_json_error(array('message' => 'Compila tutti i campi obbligatori.'));
+        foreach (array('product_id', 'date', 'time', 'capacity') as $field) {
+            if (! isset($_POST[$field]) || ! is_scalar($_POST[$field])) {
+                wp_send_json_error(array('message' => 'Compila tutti i campi obbligatori.'));
+            }
+        }
+        if (isset($_POST['end_time']) && ! is_scalar($_POST['end_time'])) {
+            wp_send_json_error(array('message' => 'Ora di fine non valida.'));
         }
 
-        // Parse Italian date format (dd/mm/yyyy).
-        $date_parts = explode('/', $date);
-        if (count($date_parts) !== 3) {
-            wp_send_json_error(array('message' => 'Formato data non valido.'));
+        $product_id = filter_var($_POST['product_id'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        $capacity = filter_var($_POST['capacity'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        if (! $product_id || 'product' !== get_post_type($product_id) || ! Plugin::is_course_enabled($product_id)) {
+            wp_send_json_error(array('message' => 'Scegli un prodotto abilitato come corso.'));
+        }
+        if (! $capacity) {
+            wp_send_json_error(array('message' => 'La capacità deve essere un numero intero maggiore di zero.'));
         }
 
-        $start_datetime = sprintf('%s-%s-%s %s:00', $date_parts[2], $date_parts[1], $date_parts[0], $time);
-        $end_datetime   = '';
-
-        if ($end_time) {
-            $end_datetime = sprintf('%s-%s-%s %s:00', $date_parts[2], $date_parts[1], $date_parts[0], $end_time);
+        $date = sanitize_text_field(wp_unslash($_POST['date']));
+        $time = sanitize_text_field(wp_unslash($_POST['time']));
+        $end_time = isset($_POST['end_time']) ? sanitize_text_field(wp_unslash($_POST['end_time'])) : '';
+        if (! preg_match('/^[0-9]{2}\/[0-9]{2}\/[0-9]{4}$/', $date) ||
+            ! preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9]$/', $time) ||
+            ('' !== $end_time && ! preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9]$/', $end_time))) {
+            wp_send_json_error(array('message' => 'Data o ora non valida.'));
+        }
+        $start = \DateTimeImmutable::createFromFormat('!d/m/Y H:i', $date . ' ' . $time, wp_timezone());
+        if (! $start || $start->format('d/m/Y H:i') !== $date . ' ' . $time) {
+            wp_send_json_error(array('message' => 'Data o ora non valida.'));
+        }
+        $start_datetime = $start->format('Y-m-d H:i:s');
+        $end_datetime = '' === $end_time ? '' : $start->format('Y-m-d') . ' ' . $end_time . ':00';
+        if ('' !== $end_datetime) {
+            $end = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $end_datetime, wp_timezone());
+            if (! $end || $end->format('Y-m-d H:i:s') !== $end_datetime) {
+                wp_send_json_error(array('message' => 'Ora di fine non valida.'));
+            }
+        }
+        if ($start_datetime < current_time('mysql') || ('' !== $end_datetime && $end_datetime <= $start_datetime)) {
+            wp_send_json_error(array('message' => 'La data deve essere futura e la fine deve seguire l’inizio.'));
         }
 
         $slot_id = $this->slot_repository->create_slot(
@@ -1863,33 +2172,26 @@ class Admin
             wp_send_json_error(array('message' => 'Permesso negato.'));
         }
 
-        $slot_id  = isset($_POST['slot_id']) ? absint($_POST['slot_id']) : 0;
-        $date     = isset($_POST['date']) ? sanitize_text_field(wp_unslash($_POST['date'])) : '';
-        $time     = isset($_POST['time']) ? sanitize_text_field(wp_unslash($_POST['time'])) : '';
-        $end_time = isset($_POST['end_time']) ? sanitize_text_field(wp_unslash($_POST['end_time'])) : '';
-        $capacity = isset($_POST['capacity']) ? absint($_POST['capacity']) : 0;
-
-        if (! $slot_id) {
-            wp_send_json_error(array('message' => 'ID slot non valido.'));
-        }
-
-        $data = array();
-
-        if ($date && $time) {
-            // Parse Italian date format.
-            $date_parts = explode('/', $date);
-            if (count($date_parts) === 3) {
-                $data['start_datetime'] = sprintf('%s-%s-%s %s:00', $date_parts[2], $date_parts[1], $date_parts[0], $time);
-
-                if ($end_time) {
-                    $data['end_datetime'] = sprintf('%s-%s-%s %s:00', $date_parts[2], $date_parts[1], $date_parts[0], $end_time);
-                }
+        foreach (array('slot_id', 'date', 'time', 'end_time', 'capacity') as $field) {
+            if (! isset($_POST[$field]) || ! is_scalar($_POST[$field])) {
+                wp_send_json_error(array('message' => 'Dati slot non validi.'));
             }
         }
-
-        if ($capacity) {
-            $data['capacity'] = $capacity;
+        $slot_id = filter_var($_POST['slot_id'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        $date = sanitize_text_field(wp_unslash($_POST['date']));
+        $time = sanitize_text_field(wp_unslash($_POST['time']));
+        $end_time = sanitize_text_field(wp_unslash($_POST['end_time']));
+        if (! $slot_id || ! preg_match('/^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/', $date, $parts) ||
+            ! preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9]$/', $time) ||
+            ('' !== $end_time && ! preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9]$/', $end_time))) {
+            wp_send_json_error(array('message' => 'Data o ora non valida.'));
         }
+        $day = $parts[3] . '-' . $parts[2] . '-' . $parts[1];
+        $data = array(
+            'start_datetime' => $day . ' ' . $time . ':00',
+            'end_datetime' => '' === $end_time ? '' : $day . ' ' . $end_time . ':00',
+            'capacity' => $_POST['capacity'],
+        );
 
         $result = $this->slot_repository->update_slot($slot_id, $data);
 
@@ -1949,14 +2251,13 @@ class Admin
             wp_send_json_error(array('message' => 'Permesso negato.'));
         }
 
-        $slot_id        = isset($_POST['slot_id']) ? absint($_POST['slot_id']) : 0;
-        $current_status = isset($_POST['current_status']) ? sanitize_text_field(wp_unslash($_POST['current_status'])) : '';
-
-        if (! $slot_id) {
+        $slot_id = isset($_POST['slot_id']) && is_scalar($_POST['slot_id']) ? filter_var($_POST['slot_id'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1))) : false;
+        $slot = $slot_id ? $this->slot_repository->get_slot($slot_id) : null;
+        if (! $slot) {
             wp_send_json_error(array('message' => 'ID slot non valido.'));
         }
 
-        $new_status = 'open' === $current_status ? 'closed' : 'open';
+        $new_status = 'open' === $slot['status'] ? 'closed' : 'open';
 
         $result = $this->slot_repository->update_slot($slot_id, array('status' => $new_status));
 
@@ -2256,9 +2557,9 @@ class Admin
                             <tr data-item-id="<?php echo esc_attr($data['item_id']); ?>"
                                 data-product-id="<?php echo esc_attr($data['product_id']); ?>"
                                 data-current-slot-id="<?php echo esc_attr($data['slot_id']); ?>"
-                                data-quantity="<?php echo esc_attr($data['item']->get_quantity()); ?>">
+                                data-quantity="<?php echo esc_attr($data['item']->get_meta('_eva_slot_qty') ?: $data['item']->get_quantity()); ?>">
                                 <td><?php echo esc_html($data['item']->get_name()); ?></td>
-                                <td><?php echo esc_html($data['item']->get_quantity()); ?></td>
+                                <td><?php echo esc_html($data['item']->get_meta('_eva_slot_qty') ?: $data['item']->get_quantity()); ?></td>
                                 <td class="eva-slot-display">
                                     <?php
                                     if ($data['slot']) {
@@ -2306,7 +2607,9 @@ class Admin
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if (count($available_slots) > 1 || (count($available_slots) === 1 && (int) $available_slots[0]['id'] !== (int) $data['slot_id'])) : ?>
+                                    <?php if (! $this->can_move_reservation($order, $data['item'], $data['slot'])) : ?>
+                                        <span class="description">Prenotazione non spostabile</span>
+                                    <?php elseif (count($available_slots) > 1 || (count($available_slots) === 1 && (int) $available_slots[0]['id'] !== (int) $data['slot_id'])) : ?>
                                         <button type="button" class="button button-small eva-change-slot-btn">Modifica</button>
                                     <?php else : ?>
                                         <span class="description">Nessun altro slot</span>
@@ -2644,7 +2947,7 @@ class Admin
             wp_send_json_error(array('message' => 'Permesso negato.'));
         }
 
-        $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
+        $product_id = isset($_POST['product_id']) && is_scalar($_POST['product_id']) ? filter_var($_POST['product_id'], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1))) : false;
 
         if (! $product_id) {
             wp_send_json_error(array('message' => 'ID prodotto non valido.'));
@@ -2654,8 +2957,11 @@ class Admin
 
         $formatted = array();
         foreach ($slots as $slot) {
-            $start_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime']);
+            $start_dt = \DateTime::createFromFormat('Y-m-d H:i:s', $slot['start_datetime'], wp_timezone());
             $label = $start_dt ? $start_dt->format('d/m/Y H:i') : $slot['start_datetime'];
+            if ($slot['end_datetime']) {
+                $label .= ' – ' . substr($slot['end_datetime'], 11, 5);
+            }
             $label .= ' (Disponibili: ' . $slot['remaining'] . '/' . $slot['capacity'] . ')';
 
             $formatted[] = array(
@@ -2676,123 +2982,109 @@ class Admin
      */
     public function ajax_change_order_item_slot()
     {
-        check_ajax_referer('eva_admin_nonce', 'nonce');
+        global $wpdb;
 
+        check_ajax_referer('eva_admin_nonce', 'nonce');
         if (! current_user_can('manage_woocommerce')) {
             wp_send_json_error(array('message' => 'Permesso negato.'));
         }
-
-        $order_id    = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
-        $item_id     = isset($_POST['item_id']) ? absint($_POST['item_id']) : 0;
-        $old_slot_id = isset($_POST['old_slot_id']) ? absint($_POST['old_slot_id']) : 0;
-        $new_slot_id = isset($_POST['new_slot_id']) ? absint($_POST['new_slot_id']) : 0;
-        $slot_start  = isset($_POST['slot_start']) ? sanitize_text_field(wp_unslash($_POST['slot_start'])) : '';
-        $slot_end    = isset($_POST['slot_end']) ? sanitize_text_field(wp_unslash($_POST['slot_end'])) : '';
-
-        if (! $order_id || ! $item_id || ! $new_slot_id) {
-            wp_send_json_error(array('message' => 'Dati mancanti.'));
-        }
-
-        $order = wc_get_order($order_id);
-        if (! $order) {
-            wp_send_json_error(array('message' => 'Ordine non trovato.'));
-        }
-
-        // Get the order item.
-        $item = $order->get_item($item_id);
-        if (! $item) {
-            wp_send_json_error(array('message' => 'Articolo non trovato.'));
-        }
-
-        // Check if new slot exists and has capacity.
-        $new_slot = $this->slot_repository->get_slot($new_slot_id);
-        if (! $new_slot) {
-            wp_send_json_error(array('message' => 'Nuovo slot non trovato.'));
-        }
-
-        $quantity = $item->get_quantity();
-
-        // Check capacity in new slot.
-        if ($new_slot['remaining'] < $quantity) {
-            wp_send_json_error(array(
-                'message' => sprintf(
-                    'Capacità insufficiente nel nuovo slot. Posti richiesti: %d, disponibili: %d.',
-                    $quantity,
-                    $new_slot['remaining']
-                )
-            ));
-        }
-
-        // First, reserve seats in the new slot.
-        $reserved = $this->slot_repository->reserve_seats($new_slot_id, $quantity);
-
-        if (! $reserved) {
-            wp_send_json_error(array('message' => 'Impossibile riservare i posti nel nuovo slot.'));
-        }
-
-        // If old slot had reserved seats, release them.
-        $was_reserved = $item->get_meta('_eva_seats_reserved');
-        if ('yes' === $was_reserved && $old_slot_id) {
-            $this->slot_repository->release_seats($old_slot_id, $quantity);
-        }
-
-        // Get old slot info for the note.
-        $old_slot = $old_slot_id ? $this->slot_repository->get_slot($old_slot_id) : null;
-        $old_slot_date = $old_slot ? Plugin::format_datetime_italian($old_slot['start_datetime']) : 'N/A';
-
-        // Update order item meta.
-        $item->update_meta_data('_eva_slot_id', $new_slot_id);
-        $item->update_meta_data('_eva_slot_start', $slot_start);
-        $item->update_meta_data('_eva_slot_end', $slot_end);
-        $item->update_meta_data('_eva_seats_reserved', 'yes');
-        $item->save_meta_data();
-
-        // Update order meta with aggregate info.
-        $slot_info = $order->get_meta('_eva_slot_info') ?: array();
-
-        // Remove old slot info for this item and add new one.
-        $new_slot_info = array();
-        foreach ($slot_info as $info) {
-            // Keep info for other products.
-            if ($info['slot_id'] != $old_slot_id || $info['product'] != $item->get_name()) {
-                $new_slot_info[] = $info;
+        $ids = array();
+        foreach (array('order_id', 'item_id', 'old_slot_id', 'new_slot_id') as $field) {
+            $ids[$field] = isset($_POST[$field]) && is_scalar($_POST[$field]) ? filter_var($_POST[$field], FILTER_VALIDATE_INT, array('options' => array('min_range' => 1))) : false;
+            if (! $ids[$field]) {
+                wp_send_json_error(array('message' => 'Dati prenotazione non validi.'));
             }
         }
-        $new_slot_info[] = array(
-            'product'  => $item->get_name(),
-            'slot_id'  => $new_slot_id,
-            'start'    => $slot_start,
-            'end'      => $slot_end,
-            'quantity' => $quantity,
-        );
-        $order->update_meta_data('_eva_slot_info', $new_slot_info);
-        $order->save();
+        $order_id = $ids['order_id'];
+        $item_id = $ids['item_id'];
+        $old_slot_id = $ids['old_slot_id'];
+        $new_slot_id = $ids['new_slot_id'];
 
-        // Add order note.
-        $order->add_order_note(
-            sprintf(
-                'Slot corso modificato: %s - Da: %s → A: %s (%d posti)',
-                $item->get_name(),
-                $old_slot_date,
-                Plugin::format_datetime_italian($slot_start),
-                $quantity
-            )
-        );
+        wc_transaction_query('start', true);
+        try {
+            // Serialize moves and status changes before reading the reservation.
+            $hpos = class_exists('\\Automattic\\WooCommerce\\Utilities\\OrderUtil') && \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+            $order_table = $hpos ? $wpdb->prefix . 'wc_orders' : $wpdb->posts;
+            $locked_order = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$order_table} WHERE id = %d FOR UPDATE", $order_id));
+            if (! $locked_order || $wpdb->last_error) {
+                throw new \RuntimeException('Ordine non disponibile. Ricarica i dettagli e riprova.');
+            }
+            $wpdb->get_col($wpdb->prepare("SELECT meta_id FROM {$wpdb->prefix}woocommerce_order_itemmeta WHERE order_item_id = %d ORDER BY meta_id FOR UPDATE", $item_id));
+            if ($wpdb->last_error) {
+                throw new \RuntimeException('Prenotazione non disponibile. Riprova.');
+            }
+            $order = wc_get_order($order_id);
+            $item = $order ? $order->get_item($item_id) : false;
+            if (! $item instanceof \WC_Order_Item_Product) {
+                throw new \RuntimeException('Prenotazione non trovata in questo ordine.');
+            }
+            $item->read_meta_data(true);
+            if ((int) $item->get_meta('_eva_slot_id') !== $old_slot_id || $old_slot_id === $new_slot_id) {
+                throw new \RuntimeException('La prenotazione è già cambiata o lo slot è quello attuale. Ricarica i dettagli.');
+            }
+            $wpdb->get_col($wpdb->prepare("SELECT meta_id FROM {$wpdb->postmeta} WHERE post_id IN (%d, %d) ORDER BY post_id, meta_id FOR UPDATE", $old_slot_id, $new_slot_id));
+            if ($wpdb->last_error) {
+                throw new \RuntimeException('Slot non disponibili. Riprova.');
+            }
+            wp_cache_delete($old_slot_id, 'post_meta');
+            wp_cache_delete($new_slot_id, 'post_meta');
+            $old_slot = $this->slot_repository->get_slot($old_slot_id);
+            $new_slot = $this->slot_repository->get_slot($new_slot_id);
+            if (! $this->can_move_reservation($order, $item, $old_slot)) {
+                throw new \RuntimeException('Puoi spostare solo prenotazioni attive con posti riservati su slot futuri.');
+            }
+            if (! $new_slot || (int) $new_slot['product_id'] !== $item->get_product_id() || 'open' !== $new_slot['status'] || $new_slot['start_datetime'] < current_time('mysql')) {
+                throw new \RuntimeException('Scegli uno slot futuro aperto dello stesso corso.');
+            }
+            $quantity = filter_var($item->get_meta('_eva_slot_qty') ?: $item->get_quantity(), FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+            if (false === $quantity || $old_slot['booked'] < $quantity) {
+                throw new \RuntimeException('I posti riservati non corrispondono alla prenotazione. Verifica l’ordine.');
+            }
+            if ($new_slot['remaining'] < $quantity || ! $this->slot_repository->reserve_seats($new_slot_id, $quantity)) {
+                throw new \RuntimeException('Posti insufficienti nel nuovo slot. Scegli un altro orario.');
+            }
+            if (! $this->slot_repository->release_seats($old_slot_id, $quantity)) {
+                throw new \RuntimeException('Impossibile liberare i posti dello slot attuale. Riprova.');
+            }
+            $item->update_meta_data('_eva_slot_id', $new_slot_id);
+            $item->update_meta_data('_eva_slot_start', $new_slot['start_datetime']);
+            $item->update_meta_data('_eva_slot_end', $new_slot['end_datetime']);
+            $item->update_meta_data('_eva_slot_qty', $quantity);
+            $item->save_meta_data();
+            $item->read_meta_data(true);
+            if ((int) $item->get_meta('_eva_slot_id') !== $new_slot_id || $item->get_meta('_eva_slot_start') !== $new_slot['start_datetime'] || $item->get_meta('_eva_slot_end') !== $new_slot['end_datetime']) {
+                throw new \RuntimeException('Impossibile aggiornare la prenotazione. Nessuno spostamento applicato.');
+            }
+            $summary = Plugin::get_instance()->woo_integration->get_slot_info_for_order($order);
+            $order->update_meta_data('_eva_slot_info', $summary);
+            $order->save();
+            $order->read_meta_data(true);
+            if ($order->get_meta('_eva_slot_info') !== $summary) {
+                throw new \RuntimeException('Impossibile aggiornare il riepilogo ordine. Nessuno spostamento applicato.');
+            }
+            $note = $order->add_order_note(sprintf(
+                'Prenotazione corso spostata: %s - Da: %s → A: %s (%d posti). Nessuna email automatica.',
+                $item->get_name(), Plugin::format_datetime_italian($old_slot['start_datetime']),
+                Plugin::format_datetime_italian($new_slot['start_datetime']), $quantity
+            ));
+            if (! $note || is_wp_error($note)) {
+                throw new \RuntimeException('Impossibile registrare lo spostamento. Riprova.');
+            }
+            wc_transaction_query('commit', true);
+        } catch (\Throwable $error) {
+            wc_transaction_query('rollback', true);
+            wp_cache_delete($old_slot_id, 'post_meta');
+            wp_cache_delete($new_slot_id, 'post_meta');
+            \WC_Cache_Helper::invalidate_cache_group('order-items');
+            \WC_Cache_Helper::invalidate_cache_group('orders');
+            Slot_Repository::log('Reservation move failed: ' . $error->getMessage(), 'error');
+            wp_send_json_error(array('message' => $error instanceof \RuntimeException ? $error->getMessage() : 'Impossibile spostare la prenotazione. Ricarica i dettagli e riprova.'));
+        }
 
-        Slot_Repository::log(sprintf(
-            'Slot change: Order %d, Item %d, Old Slot %d → New Slot %d, Qty %d',
-            $order_id,
-            $item_id,
-            $old_slot_id,
-            $new_slot_id,
-            $quantity
-        ));
-
+        Slot_Repository::log(sprintf('Slot change: Order %d, Item %d, Old Slot %d → New Slot %d, Qty %d', $order_id, $item_id, $old_slot_id, $new_slot_id, $quantity));
         wp_send_json_success(array(
-            'message' => sprintf(
-                'Slot modificato con successo! Nuova data: %s',
-                Plugin::format_datetime_italian($slot_start)
-            )
+            'message' => sprintf('Prenotazione #%d spostata al %s (%d posti).', $order_id, Plugin::format_datetime_italian($new_slot['start_datetime']), $quantity),
+            'destination_slot_id' => $new_slot_id,
         ));
     }
 
