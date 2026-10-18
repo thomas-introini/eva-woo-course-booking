@@ -39,6 +39,7 @@ class Frontend
 
         // Product page.
         add_action('woocommerce_before_add_to_cart_button', array($this, 'render_slot_selection'), 15);
+        add_action('eva_course_bookings_render_booking_selector', array($this, 'render_booking_selector'), 10, 1);
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
 
         // Disable add to cart for courses without slot selection.
@@ -189,13 +190,39 @@ class Frontend
      */
     public function render_slot_selection()
     {
-        global $post;
+        $product_id = get_the_ID();
 
-        if (! Plugin::is_course_enabled($post->ID)) {
+        if (! $product_id) {
             return;
         }
 
-        $available_dates = $this->slot_repository->get_available_dates($post->ID);
+        /**
+         * Filter whether to automatically render the booking selector.
+         *
+         * @param bool $auto_render Whether to render at the standard WooCommerce hook.
+         * @param int  $product_id  Product ID.
+         */
+        if (! apply_filters('eva_course_bookings_auto_render_booking_selector', true, $product_id)) {
+            return;
+        }
+
+        $this->render_booking_selector($product_id);
+    }
+
+    /**
+     * Render the booking selector inside a product's add-to-cart form.
+     *
+     * @param int $product_id Product ID. Defaults to the current product.
+     */
+    public function render_booking_selector($product_id = 0)
+    {
+        $product_id = $product_id ? absint($product_id) : get_the_ID();
+
+        if (! $product_id || ! Plugin::is_course_enabled($product_id)) {
+            return;
+        }
+
+        $available_dates = $this->slot_repository->get_available_dates($product_id);
         $available_dates = $this->filter_dates_by_lead_time($available_dates);
 
         $has_dates = ! empty($available_dates);
@@ -214,7 +241,7 @@ class Frontend
                 <input type="hidden" name="eva_slot_end" id="eva-slot-end" value="">
                 <input type="hidden" name="eva_skip_slot" id="eva-skip-slot" value="">
 
-                <?php if (Plugin::is_course_skip_slot_enabled($post->ID)) : ?>
+                <?php if (Plugin::is_course_skip_slot_enabled($product_id)) : ?>
                 <!-- Skip slot option for gifts -->
                 <div class="eva-skip-slot-option">
                     <label class="eva-skip-slot-label">

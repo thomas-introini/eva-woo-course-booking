@@ -106,7 +106,7 @@ class Woo_Integration
         }
 
         // Check if skip slot is enabled (gift purchase / booking later).
-        $skip_slot = isset($_POST['eva_skip_slot']) && '1' === $_POST['eva_skip_slot'];
+        $skip_slot = isset($_POST['eva_skip_slot']) && '1' === $_POST['eva_skip_slot'] && Plugin::is_course_skip_slot_enabled($product_id);
 
         if ($skip_slot) {
             $gift_recipient = isset($_POST['eva_gift_recipient']);
@@ -207,7 +207,7 @@ class Woo_Integration
         }
 
         // Check if skip slot is enabled (gift purchase / booking later).
-        $skip_slot = isset($_POST['eva_skip_slot']) && '1' === $_POST['eva_skip_slot'];
+        $skip_slot = isset($_POST['eva_skip_slot']) && '1' === $_POST['eva_skip_slot'] && Plugin::is_course_skip_slot_enabled($product_id);
 
         if ($skip_slot) {
             $cart_item_data['eva_pending_booking'] = true;
