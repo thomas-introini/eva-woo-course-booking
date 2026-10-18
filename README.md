@@ -149,6 +149,40 @@ When a product is enabled as a course:
 3. After selecting a slot, they can proceed to checkout
 4. The quantity represents the number of participants
 
+### Custom product layouts
+
+The selector renders automatically at `woocommerce_before_add_to_cart_button` (priority 15). To place it elsewhere, disable automatic rendering in your theme or integration code before the product template renders:
+
+```php
+add_filter('eva_course_bookings_auto_render_booking_selector', '__return_false');
+```
+
+Then render it once at the desired location **inside the product's add-to-cart form**:
+
+```php
+do_action('eva_course_bookings_render_booking_selector', $product_id);
+```
+
+The product ID is optional and defaults to the current product. The public renderer is also available as `Eva_Course_Bookings\Plugin::get_instance()->frontend->render_booking_selector($product_id)`. Missing and non-course products render nothing.
+
+For a product-specific opt-out, the filter receives the current product ID as its second argument:
+
+```php
+add_filter('eva_course_bookings_auto_render_booking_selector', function ($enabled, $product_id) {
+    return 123 === $product_id ? false : $enabled;
+}, 10, 2);
+```
+
+Use one selector per single-product page, for the product being purchased. Existing calendar styling, JavaScript, AJAX loading, cart fields, and Classic/Block checkout integration are reused. The public action works even when automatic rendering is disabled. Purchases can skip slot selection only when the product's existing skip-slot setting is enabled; otherwise normal slot validation applies.
+
+Run the rendering and purchase regression check in the local development environment:
+
+```bash
+docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/booking-selector.php
+```
+
+It checks default and custom placement, skip-slot authorization, gift validation, cart/order metadata, and Classic/Block checkout. Temporary products, slots, and settings are cleaned up afterwards.
+
 ## Local Development
 
 ### Prerequisites
