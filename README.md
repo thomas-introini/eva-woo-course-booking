@@ -18,7 +18,7 @@ WordPress + WooCommerce plugin for managing course bookings with dates and times
 
 - WordPress 6.0+
 - WooCommerce 7.0+
-- PHP 8.0+
+- PHP 8.0+ (mbstring and zlib for PDF gift vouchers)
 
 ## Installation
 
@@ -127,6 +127,66 @@ Without a valid booking page, customers are asked to contact the store. Older pu
 The new email initially inherits the existing completed-order email’s enabled/disabled setting, then has an independent switch. Disabling it means course-only orders receive no completion email. Other transactional emails and order-status automation are unchanged.
 
 HTML/plain templates can be overridden at `yourtheme/woocommerce/emails/course-completed-order.php` and `yourtheme/woocommerce/emails/plain/course-completed-order.php`.
+
+### Scheduled gift vouchers
+
+Courses that allow purchasing without choosing a date can send a personalized PDF gift voucher to a recipient. This applies only to **new purchases made with the gift delivery fields**; older gifts keep their existing behavior.
+
+1. Open the course product and enable **Abilita prenotazione corso** and **Permetti prenotazioni future senza specificare data e orario**.
+2. Select **Modello buono regalo PDF** from the media library and click **Aggiorna**. The selection stays saved even if the layout is unfinished; a notice explains any rendering error. Configure and preview the template before accepting gift purchases.
+3. Under **WooCommerce → Corsi → Impostazioni → Buoni regalo PDF**, configure the shared layout and error notification address (default: **info@evacaffe.it**).
+4. Select a course and enter sample names/message to preview the actual PDF. Preview includes unsaved layout changes; **Salva impostazioni voucher** saves them.
+
+Gift purchasers enter the recipient email/name, sender display name, and an optional message of up to 500 characters. They can choose immediate sending after payment or a date whose **08:00 in the store timezone** is still in the future. Today is selectable before 08:00; from 08:00 onwards, the earliest scheduled date is tomorrow. The same cutoff is checked again at checkout. If payment arrives after the requested time, the voucher is queued immediately. One voucher covers the participant quantity on that course line. Classic and Block checkout use the same validation.
+
+The recipient email includes the PDF, message, booking lookup reference, and a link to the existing booking page configured under **WooCommerce → Settings → Emails → Conferma acquisto corsi**. Without a valid booking page, it asks the recipient to contact the store. Recipient emails exclude purchaser billing details, prices, and unrelated order lines. Configure **Buono regalo corso** under WooCommerce email settings for its subject, heading, content, and HTML/plain format.
+
+#### Create the PDF artwork
+
+Design one page per course, with its logo, course name, artwork, and fixed instructions. Export a flattened, unencrypted PDF, preferably **PDF 1.4**; the free importer does not support encrypted files or compressed PDF object/cross-reference streams. Product saving and preview report incompatible files without discarding the selected PDF. The PDF needs no editable form fields or placeholder tokens: the plugin adds text over blank areas.
+
+Default page size: **A4 landscape, 297 × 210 mm**. Reserve these areas, measured from the top-left corner:
+
+| Added content | X (mm) | Y (mm) | Width (mm) | Height (mm) | Font (pt) |
+|---|---:|---:|---:|---:|---:|
+| `Per: recipient name` | 20 | 85 | 257 | 12 | 18 |
+| `Da: sender name` | 20 | 105 | 257 | 10 | 14 |
+| Gift message | 25 | 125 | 247 | 45 | 12 |
+| Booking reference | 20 | 185 | 190 | 8 | 10 |
+| Participants | 220 | 185 | 57 | 8 | 10 |
+
+Every course uses the same layout; all PDFs must match its page dimensions. Positions, box sizes, font sizes, alignment, and page dimensions are editable in settings. Text wraps and shrinks to a minimum of 9 pt. Text that still cannot fit, or characters absent from the bundled font (including many emoji), are rejected before checkout. Template/layout changes apply to unsent gifts and retries; preview real gift details from the delivery list after changing a layout. Previews always use the **current** artwork/layout, including for an already sent gift.
+
+#### Review and send gifts
+
+Open **WooCommerce → Corsi → Invii regalo** to filter past/future deliveries by course and status. The list retains requested delivery time, actual send time, latest error, and attempt history while the order exists. **Invia ora** sends a future voucher immediately; **Riprova** retries a failed delivery. Both require a paid order and use the same send routine as cron. Successful sends cannot be sent again from this screen.
+
+Failures stop automatic sending and notify the configured administrator address once per failed attempt. Check/fix the error, then retry manually. An interrupted send is marked **Da verificare** after 15 minutes: check your mail provider's sent log before retrying because the recipient might already have received it. Failed error notifications are logged under source `eva-course-gifts` without recursive notifications.
+
+Cancelled, failed, or fully refunded purchases do not send unsent vouchers. Partial quantity refunds reduce participants on the voucher. Successfully sent emails cannot be withdrawn. Plugin updates/deactivation retain history; the five-minute reconciliation job restores missing unsent queue jobs after reactivation or an outage. It does not retry known failed sends.
+
+“Inviato” and its timestamp mean that the configured WordPress mail transport **accepted the message**. Inbox delivery and later bounces require mail-provider tracking. Personalized attachments are generated in private temporary storage, deleted after each attempt, and never published in the media library.
+
+#### Reliable cron and installation requirements
+
+Vouchers use WooCommerce's bundled Action Scheduler. For reliable dispatch without website traffic, configure the production server to run WordPress cron every minute, as the web-server user. Example crontab (replace both paths):
+
+```cron
+* * * * * cd /path/to/wordpress && /usr/local/bin/wp cron event run --due-now --quiet
+```
+
+After confirming server cron works, set `define('DISABLE_WP_CRON', true);` in `wp-config.php` to stop request-triggered cron. Check **WooCommerce → Status → Scheduled Actions**, group `eva-course-gifts`, to diagnose queue processing. Jobs are due at 08:00 local time, including daylight-saving changes; server outages, queue backlogs, or mail transport delays can postpone dispatch.
+
+PDF generation requires PHP **mbstring** and **zlib**, plus the bundled FPDI/tFPDF dependencies. Install source dependencies with `composer install --working-dir=eva-course-bookings --no-dev`; `./build.sh` installs locked production dependencies and includes them and the Unicode font in the ZIP. Composer is only needed for development/building, not on the destination WordPress site. The temporary directory reported by PHP must be writable and outside the WordPress web root.
+
+Run the gift regression checks (mail intercepted; temporary products/orders/PDFs/options cleaned up):
+
+```bash
+docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/gift-deliveries.php legacy
+docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/gift-deliveries.php hpos
+```
+
+An optional second argument is a container directory for a PDF and HTML preview, for example `legacy /tmp/eva-gift-preview`. Tests never change the store's order-storage setting. Manual retries, no historical gift migration, and the existing booking lookup flow are intentional; no coupon codes or expiry system are introduced.
 
 ### Self-test
 
@@ -352,6 +412,21 @@ The plugin supports both classic checkout and WooCommerce's new Block Checkout:
 For compatibility with caching plugins, slots are loaded via AJAX on the frontend.
 
 ## Changelog
+
+### 1.4.7
+
+- Allow same-day gift delivery while 08:00 is still in the future, using the same cutoff in the date picker and checkout validation
+
+### 1.4.6
+
+- Keep product PDF selections saved while configuring the voucher layout, so courses remain selectable for preview
+- Show actual PDF/layout dimensions in mismatch errors and clarify how to populate the preview course list
+
+### 1.4.5
+
+- Added personalized course gift vouchers with immediate or scheduled delivery after payment
+- Added editable PDF layouts and previews, delivery history, manual sends/retries, and configurable error alerts
+- Included PDF dependencies and fonts in the distributable plugin ZIP
 
 ### 1.4.3
 

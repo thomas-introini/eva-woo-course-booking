@@ -12,6 +12,8 @@ OUTPUT_FILE="$SCRIPT_DIR/${PLUGIN_NAME}-v${VERSION}.zip"
 
 echo "🔨 Building $PLUGIN_NAME v$VERSION..."
 
+composer install --working-dir="$SCRIPT_DIR/$PLUGIN_NAME" --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
 # Remove existing zip
 if [ -f "$OUTPUT_FILE" ]; then
     rm "$OUTPUT_FILE"
@@ -25,7 +27,13 @@ zip -r "$OUTPUT_FILE" "$PLUGIN_NAME" \
     -x "*.git*" \
     -x "*/.DS_Store" \
     -x "*/node_modules/*" \
-    -x "*/vendor/*" \
+    -x "*/vendor/setasign/tfpdf/font/unifont/*.ttf" \
+    -x "*/vendor/setasign/tfpdf/font/unifont/*.mtx.php" \
+    -x "*/vendor/setasign/tfpdf/font/unifont/*.cw.dat" \
+    -x "*/vendor/setasign/tfpdf/font/unifont/*.cw127.php" \
+    -x "*/vendor/setasign/tfpdf/ex.php" \
+    -x "*/vendor/setasign/tfpdf/ex.pdf" \
+    -x "*/vendor/setasign/tfpdf/HelloWorld.txt" \
     -x "*.log" \
     -x "*/tests/*" \
     -x "*/.phpunit*" \
@@ -33,6 +41,9 @@ zip -r "$OUTPUT_FILE" "$PLUGIN_NAME" \
     -x "*/.editorconfig" \
     -x "*/composer.lock" \
     -x "*/package-lock.json"
+
+# Vouchers use only this Unicode font; the font license stays in the archive.
+zip "$OUTPUT_FILE" "$PLUGIN_NAME/vendor/setasign/tfpdf/font/unifont/DejaVuSansCondensed.ttf"
 
 # Get file size
 SIZE=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')

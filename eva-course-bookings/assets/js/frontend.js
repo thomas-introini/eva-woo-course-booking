@@ -19,6 +19,7 @@
       this.initDatepicker();
       this.bindEvents();
       this.disableAddToCart();
+      $('#eva-gift-email-field :input').prop('disabled', true);
     },
 
     initDatepicker: function () {
@@ -101,6 +102,11 @@
       $('#eva-gift-email').on('input', function () {
         $('#eva-gift-validation-message').hide();
       });
+      $('#eva-gift-mode').on('change', function () {
+        var scheduled = $(this).val() === 'scheduled';
+        $('#eva-gift-date-field').prop('hidden', !scheduled);
+        $('#eva-gift-date').prop('required', scheduled);
+      });
 
       // Time slot selection
       $(document).on('click', '.eva-time-slot', function () {
@@ -158,9 +164,7 @@
         // Hide gift option and reset fields
         $('#eva-gift-option').hide();
         $('#eva-gift-recipient-checkbox').prop('checked', false);
-        $('#eva-gift-email').val('');
-        $('#eva-gift-email-field').hide();
-        $('#eva-gift-validation-message').hide();
+        this.onGiftRecipientChanged(false);
 
         // Clear hidden field
         $('#eva-skip-slot').val('');
@@ -180,11 +184,15 @@
     },
 
     onGiftRecipientChanged: function (isChecked) {
+      $('#eva-gift-email-field :input').prop('disabled', !isChecked);
+      $('#eva-gift-recipient, #eva-gift-sender').prop('required', isChecked);
       if (isChecked) {
         $('#eva-gift-email-field').show();
       } else {
         $('#eva-gift-email-field').hide();
         $('#eva-gift-email').val('');
+        $('.eva-gift-details input, .eva-gift-details textarea').val('');
+        $('#eva-gift-mode').val('now').trigger('change');
         $('#eva-gift-validation-message').hide();
       }
     },
@@ -388,6 +396,13 @@
               },
               300
             );
+            return false;
+          }
+          var invalid = $('.eva-gift-details :input:enabled').filter(function () {
+            return !this.checkValidity();
+          }).first();
+          if (invalid.length) {
+            invalid[0].reportValidity();
             return false;
           }
         }

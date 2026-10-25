@@ -110,11 +110,18 @@ class Woo_Integration
 
         if ($skip_slot) {
             $gift_recipient = isset($_POST['eva_gift_recipient']);
-            $gift_email = isset($_POST['eva_gift_email']) ? sanitize_email(wp_unslash($_POST['eva_gift_email'])) : '';
+            $gift_email = isset($_POST['eva_gift_email']) && is_string($_POST['eva_gift_email']) ? sanitize_email(wp_unslash($_POST['eva_gift_email'])) : '';
 
             if ($gift_recipient && (! $gift_email || ! is_email($gift_email))) {
                 wc_add_notice('Inserisci un\'email valida per il destinatario.', 'error');
                 return false;
+            }
+            if ($gift_recipient && Gift_Delivery::enabled($product_id)) {
+                $gift = Gift_Delivery::purchase_data($product_id, $_POST);
+                if (is_wp_error($gift)) {
+                    wc_add_notice($gift->get_error_message(), 'error');
+                    return false;
+                }
             }
 
             // Allow purchase without slot - will be assigned later by admin.
@@ -212,9 +219,15 @@ class Woo_Integration
         if ($skip_slot) {
             $cart_item_data['eva_pending_booking'] = true;
             $gift_recipient = isset($_POST['eva_gift_recipient']);
-            $gift_email = isset($_POST['eva_gift_email']) ? sanitize_email(wp_unslash($_POST['eva_gift_email'])) : '';
+            $gift_email = isset($_POST['eva_gift_email']) && is_string($_POST['eva_gift_email']) ? sanitize_email(wp_unslash($_POST['eva_gift_email'])) : '';
             if ($gift_recipient && $gift_email && is_email($gift_email)) {
                 $cart_item_data['eva_gift_email'] = $gift_email;
+                if (Gift_Delivery::enabled($product_id)) {
+                    $gift = Gift_Delivery::purchase_data($product_id, $_POST);
+                    if (! is_wp_error($gift)) {
+                        $cart_item_data['eva_gift_delivery'] = $gift;
+                    }
+                }
             }
             $cart_item_data['unique_key'] = md5($product_id . '_pending_' . time() . '_' . wp_rand());
             return $cart_item_data;
@@ -256,6 +269,15 @@ class Woo_Integration
                     'key'   => 'Email destinatario',
                     'value' => $cart_item['eva_gift_email'],
                 );
+            }
+            if (! empty($cart_item['eva_gift_delivery'])) {
+                $gift = $cart_item['eva_gift_delivery'];
+                $item_data[] = array('key' => 'Regalo per', 'value' => esc_html($gift['recipient']));
+                $item_data[] = array('key' => 'Da parte di', 'value' => esc_html($gift['sender']));
+                $item_data[] = array('key' => 'Invio buono', 'value' => esc_html('scheduled' === $gift['mode'] ? $gift['date'] . ' 08:00 (' . $gift['timezone'] . ')' : 'Dopo il pagamento'));
+                if ($gift['note'] !== '') {
+                    $item_data[] = array('key' => 'Messaggio regalo', 'value' => nl2br(esc_html($gift['note'])));
+                }
             }
             return $item_data;
         }
@@ -329,6 +351,10 @@ class Woo_Integration
     public function validate_cart_items()
     {
         foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+            $gift_error = $this->validate_gift_cart_item($cart_item);
+            if (is_wp_error($gift_error)) {
+                wc_add_notice($gift_error->get_error_message(), 'error');
+            }
             // Skip validation for pending bookings.
             if (isset($cart_item['eva_pending_booking']) && $cart_item['eva_pending_booking']) {
                 continue;
@@ -403,6 +429,10 @@ class Woo_Integration
     public function validate_block_checkout($order, $request)
     {
         foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+            $gift_error = $this->validate_gift_cart_item($cart_item);
+            if (is_wp_error($gift_error)) {
+                throw new \Exception($gift_error->get_error_message());
+            }
             // Skip validation for pending bookings.
             if (isset($cart_item['eva_pending_booking']) && $cart_item['eva_pending_booking']) {
                 continue;
@@ -440,6 +470,12 @@ class Woo_Integration
             $item->add_meta_data('_eva_slot_qty', $values['quantity'], true);
             if (! empty($values['eva_gift_email'])) {
                 $item->add_meta_data('_eva_gift_email', $values['eva_gift_email'], true);
+            }
+            if (! empty($values['eva_gift_delivery'])) {
+                $gift = $values['eva_gift_delivery'];
+                $item->add_meta_data('_eva_gift_data', $gift, true);
+                $item->add_meta_data('_eva_gift_due', 'scheduled' === $gift['mode'] ? Gift_Delivery::due_at($gift['date'], $gift['timezone']) : time(), true);
+                $item->add_meta_data('_eva_gift_status', 'awaiting_payment', true);
             }
             return;
         }
@@ -888,5 +924,16 @@ class Woo_Integration
         }
 
         return $slot_info;
+    }
+
+    private function validate_gift_cart_item($cart_item)
+    {
+        if (empty($cart_item['eva_gift_delivery'])) {
+            return true;
+        }
+        if (! is_array($cart_item['eva_gift_delivery']) || empty($cart_item['eva_gift_email']) || ! is_email($cart_item['eva_gift_email'])) {
+            return new \WP_Error('gift', 'Dati regalo non validi. Rimuovi e aggiungi nuovamente il corso al carrello.');
+        }
+        return Gift_Delivery::validate_data($cart_item['product_id'], $cart_item['eva_gift_delivery']);
     }
 }

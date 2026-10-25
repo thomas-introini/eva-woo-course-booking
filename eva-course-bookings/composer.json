@@ -1,0 +1,13 @@
+{
+  "name": "eva/course-bookings",
+  "description": "Course booking voucher renderer",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.0",
+    "ext-mbstring": "*",
+    "setasign/fpdi": "^2.6",
+    "setasign/tfpdf": "^1.33"
+  },
+  "config": { "platform": { "php": "8.0.30" }, "sort-packages": true }
+}

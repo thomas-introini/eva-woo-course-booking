@@ -4,7 +4,7 @@
  * Plugin Name: Eva Course Bookings
  * Plugin URI: https://github.com/eva-course-bookings
  * Description: Plugin per la gestione di prenotazioni di corsi con date e orari.
- * Version: 1.4.3
+ * Version: 1.4.7
  * Author: Thomas Introini
  * Author URI: https://thomasintroini.it
  * Text Domain: eva-course-bookings
@@ -25,7 +25,7 @@ if (! defined('ABSPATH')) {
 }
 
 // Define plugin constants.
-define('EVA_COURSE_BOOKINGS_VERSION', '1.4.3');
+define('EVA_COURSE_BOOKINGS_VERSION', '1.4.7');
 define('EVA_COURSE_BOOKINGS_PLUGIN_FILE', __FILE__);
 define('EVA_COURSE_BOOKINGS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('EVA_COURSE_BOOKINGS_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -70,6 +70,9 @@ function eva_course_bookings_init()
     require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/class-frontend.php';
     require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/class-woo-integration.php';
     require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/class-plugin.php';
+    require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/class-voucher-pdf.php';
+    require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/class-gift-delivery.php';
+    require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/class-gift-admin.php';
 
     // Initialize main plugin class.
     Eva_Course_Bookings\Plugin::get_instance();

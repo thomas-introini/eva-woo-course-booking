@@ -574,6 +574,7 @@ class Admin
             'prenotazioni'  => 'Prenotazioni',
             'da_prenotare'  => 'Da prenotare' . $pending_badge,
             'corsi'         => 'Corsi abilitati',
+            'invii_regalo'  => 'Invii regalo',
             'impostazioni'  => 'Impostazioni',
         );
 
@@ -607,6 +608,10 @@ class Admin
                         break;
                     case 'impostazioni':
                         $this->render_settings_content();
+                        Plugin::get_instance()->gift_admin->render_settings();
+                        break;
+                    case 'invii_regalo':
+                        Plugin::get_instance()->gift_admin->render_deliveries();
                         break;
                     case 'prenotazioni':
                         $this->render_bookings_content();

@@ -589,3 +589,15 @@
     min-width: auto;
   }
 }
+/* Gift controls stay inside the existing booking selector. */
+.eva-slot-selection .eva-gift-details label {
+  display: block;
+  margin-top: 12px;
+}
+.eva-slot-selection .eva-gift-details input,
+.eva-slot-selection .eva-gift-details textarea,
+.eva-slot-selection .eva-gift-details select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}

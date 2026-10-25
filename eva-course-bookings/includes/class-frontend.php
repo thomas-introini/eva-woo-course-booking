@@ -263,8 +263,28 @@ class Frontend
                         <label for="eva-gift-email">Email del destinatario *</label>
                         <input type="email" id="eva-gift-email" name="eva_gift_email" placeholder="nome@email.com">
                         <p class="eva-gift-email-description">
-                            Useremo questa email per permettere al destinatario di scegliere la data del corso.
+                            <?php echo Gift_Delivery::enabled($product_id) ? 'Invieremo il buono regalo a questa email. Il destinatario potrà scegliere la data del corso.' : 'Useremo questa email per permettere al destinatario di scegliere la data del corso.'; ?>
                         </p>
+                        <?php if (Gift_Delivery::enabled($product_id)) : ?>
+                            <div class="eva-gift-details">
+                                <label for="eva-gift-recipient">Nome destinatario *</label>
+                                <input type="text" id="eva-gift-recipient" name="eva_gift_recipient_name" maxlength="100">
+                                <label for="eva-gift-sender">Da parte di *</label>
+                                <input type="text" id="eva-gift-sender" name="eva_gift_sender" maxlength="100" placeholder="Il tuo nome o i nomi di chi fa il regalo">
+                                <label for="eva-gift-note">Messaggio regalo (facoltativo)</label>
+                                <textarea id="eva-gift-note" name="eva_gift_note" rows="4" maxlength="500" placeholder="Massimo 500 caratteri"></textarea>
+                                <label for="eva-gift-mode">Quando inviare il buono *</label>
+                                <select id="eva-gift-mode" name="eva_gift_mode">
+                                    <option value="now">Subito dopo il pagamento</option>
+                                    <option value="scheduled">Alla data scelta, alle 08:00</option>
+                                </select>
+                                <div id="eva-gift-date-field" hidden>
+                                    <label for="eva-gift-date">Data invio *</label>
+                                    <input type="date" id="eva-gift-date" name="eva_gift_date" min="<?php echo esc_attr(Gift_Delivery::min_delivery_date(current_datetime())); ?>">
+                                    <p>Il buono verrà inviato alle 08:00 nel fuso <?php echo esc_html(wp_timezone_string()); ?>, dopo la conferma del pagamento.</p>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <div class="eva-validation-message" id="eva-gift-validation-message" style="display: none;">
                         Inserisci un'email valida per il destinatario.

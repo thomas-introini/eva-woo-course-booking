@@ -48,6 +48,7 @@ phpunit.xml
 
 # Composer
 composer.lock
+!eva-course-bookings/composer.lock
 
 # npm/yarn
 package-lock.json

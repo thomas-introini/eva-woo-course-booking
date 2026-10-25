@@ -52,6 +52,10 @@ class Plugin {
      */
     public $slot_repository;
 
+    public $gift_delivery;
+
+    public $gift_admin;
+
     /**
      * Get singleton instance.
      *
@@ -80,6 +84,8 @@ class Plugin {
         $this->admin           = new Admin( $this->slot_repository );
         $this->frontend        = new Frontend( $this->slot_repository );
         $this->woo_integration = new Woo_Integration( $this->slot_repository );
+        $this->gift_delivery   = new Gift_Delivery();
+        $this->gift_admin      = new Gift_Admin($this->gift_delivery);
 
         // Load textdomain.
         add_action( 'init', array( $this, 'load_textdomain' ) );
@@ -115,10 +121,12 @@ class Plugin {
         // Include the custom email class.
         require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/emails/class-wc-email-course-reminder.php';
         require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/emails/class-wc-email-course-completed-order.php';
+        require_once EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'includes/emails/class-wc-email-course-gift.php';
 
         // Add our email class.
         $email_classes['WC_Email_Course_Reminder'] = new WC_Email_Course_Reminder();
         $email_classes['WC_Email_Course_Completed_Order'] = new WC_Email_Course_Completed_Order();
+        $email_classes['WC_Email_Course_Gift'] = new WC_Email_Course_Gift();
 
         return $email_classes;
     }
