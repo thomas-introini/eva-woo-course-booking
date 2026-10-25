@@ -234,7 +234,7 @@ To create an installable zip package:
 ./build.sh
 ```
 
-This generates `eva-course-bookings.zip` ready for upload to WordPress.
+This generates `eva-course-bookings-v<version>.zip` ready for upload to WordPress.
 
 ## Plugin Structure
 
@@ -318,6 +318,10 @@ The plugin supports both classic checkout and WooCommerce's new Block Checkout:
 For compatibility with caching plugins, slots are loaded via AJAX on the frontend.
 
 ## Changelog
+
+### 1.4.3
+
+- Added roastery directions, parking and metro links, and arrival video to HTML and plain-text course reminders
 
 ### 1.2.0
 
