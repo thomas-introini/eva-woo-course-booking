@@ -43,6 +43,22 @@ if ($location) {
 
 echo "\n";
 
+echo esc_html__('Come raggiungerci', 'eva-course-bookings') . "\n\n";
+echo esc_html__('Ti aspettiamo presso la nostra torrefazione in Via Tucidide 56, 20134 Milano.', 'eva-course-bookings') . "\n";
+echo esc_url_raw('https://maps.app.goo.gl/HkFkzm27H6KFMQF16') . "\n";
+echo esc_html__('Il numero del nostro interno al citofono è 183.', 'eva-course-bookings') . "\n\n";
+
+echo esc_html__('Se vieni in macchina, ti consigliamo questi parcheggi:', 'eva-course-bookings') . "\n";
+echo esc_html__('Parcheggio 1:', 'eva-course-bookings') . ' ' . esc_url_raw('https://maps.app.goo.gl/xaFTgSjihrmzz8Pn6') . "\n";
+echo esc_html__('Parcheggio 2:', 'eva-course-bookings') . ' ' . esc_url_raw('https://maps.app.goo.gl/1VZaZSJujXTKxG388') . "\n\n";
+
+echo esc_html__('Se vieni con i mezzi, le fermate della metro più vicine sono:', 'eva-course-bookings') . "\n";
+echo 'M4 Repetti: ' . esc_url_raw('https://maps.app.goo.gl/a1CPx48WBnXdT3ix5') . "\n";
+echo 'M4 Argonne: ' . esc_url_raw('https://maps.app.goo.gl/38B56CGzsmji1MvP6') . "\n\n";
+
+echo esc_html__('Guarda il video: Come raggiungerci', 'eva-course-bookings') . "\n";
+echo esc_url_raw('https://www.instagram.com/s/aGlnaGxpZ2h0OjE3OTA4MDg0MzQ0MTY0NjQ5?story_media_id=3821614722886423053&igsh=MWcwOHpzeHJrb2Q0NQ==') . "\n\n";
+
 if ($notes) {
     echo "----------------------------------------\n";
     echo strtoupper(esc_html__('Note importanti', 'eva-course-bookings')) . "\n";
