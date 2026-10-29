@@ -9,6 +9,8 @@ class Gift_Delivery
     const HOOK = 'eva_send_gift_voucher';
     const GROUP = 'eva-course-gifts';
     const RECONCILE = 'eva_reconcile_gift_vouchers';
+    const NOTE_MAX_LENGTH = 250;
+    const NOTE_MAX_BREAKS = 2;
 
     public function __construct()
     {
@@ -55,6 +57,20 @@ class Gift_Delivery
         return self::validate_data($product_id, $data);
     }
 
+    public static function validate_note($value)
+    {
+        if (! is_string($value)) {
+            throw new \RuntimeException('Messaggio regalo non valido.');
+        }
+        $value = str_replace(array("\r\n", "\r"), "\n", sanitize_textarea_field($value));
+        $lines = array_filter(array_map('trim', explode("\n", $value)), static function ($line) { return '' !== $line; });
+        $value = implode("\n", $lines);
+        if (mb_strlen($value) > self::NOTE_MAX_LENGTH || substr_count($value, "\n") > self::NOTE_MAX_BREAKS) {
+            throw new \RuntimeException('La dedica può contenere al massimo ' . self::NOTE_MAX_LENGTH . ' caratteri e ' . self::NOTE_MAX_BREAKS . ' a capo manuali.');
+        }
+        return $value;
+    }
+
     public static function validate_data($product_id, array $data)
     {
         try {
@@ -63,9 +79,10 @@ class Gift_Delivery
                     throw new \RuntimeException('Dati regalo incompleti.');
                 }
             }
-            if ('' === trim($data['recipient']) || '' === trim($data['sender']) || mb_strlen($data['recipient']) > 100 || mb_strlen($data['sender']) > 100 || mb_strlen($data['note']) > 500) {
-                throw new \RuntimeException('Inserisci i nomi del destinatario e del mittente (massimo 100 caratteri) e un messaggio entro 500 caratteri.');
+            if ('' === trim($data['recipient']) || '' === trim($data['sender']) || mb_strlen($data['recipient']) > 100 || mb_strlen($data['sender']) > 100) {
+                throw new \RuntimeException('Inserisci i nomi del destinatario e del mittente (massimo 100 caratteri).');
             }
+            $data['note'] = self::validate_note($data['note']);
             if (! in_array($data['mode'], array('now', 'scheduled'), true)) {
                 throw new \RuntimeException('Scegli quando inviare il regalo.');
             }
@@ -78,7 +95,7 @@ class Gift_Delivery
             } else {
                 $data['date'] = '';
             }
-            Voucher_Pdf::render(get_post_meta($product_id, '_eva_gift_pdf_id', true), array_merge($data, array('reference' => '999999999999', 'quantity' => 999)));
+            Voucher_Pdf::render($product_id, array_merge($data, array('reference' => '999999999999', 'quantity' => 999)));
             return $data;
         } catch (\Throwable $error) {
             return new \WP_Error('gift', 'Voucher regalo: ' . $error->getMessage());
@@ -222,7 +239,7 @@ class Gift_Delivery
             if (! is_array($data) || ! is_email($recipient)) {
                 throw new \RuntimeException('Dati regalo o email destinatario non validi.');
             }
-            $bytes = Voucher_Pdf::render(get_post_meta($item->get_product_id(), '_eva_gift_pdf_id', true), array_merge($data, array('reference' => $order->get_id(), 'quantity' => self::remaining($order, $item))));
+            $bytes = Voucher_Pdf::render($item->get_product_id(), array_merge($data, array('reference' => $order->get_id(), 'quantity' => self::remaining($order, $item))));
             $directory = realpath(sys_get_temp_dir());
             $webroot = realpath(ABSPATH);
             if (! $directory || ! $webroot || $directory === $webroot || strpos($directory, $webroot . DIRECTORY_SEPARATOR) === 0) {

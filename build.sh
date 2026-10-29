@@ -31,6 +31,9 @@ zip -r "$OUTPUT_FILE" "$PLUGIN_NAME" \
     -x "*/vendor/setasign/tfpdf/font/unifont/*.mtx.php" \
     -x "*/vendor/setasign/tfpdf/font/unifont/*.cw.dat" \
     -x "*/vendor/setasign/tfpdf/font/unifont/*.cw127.php" \
+    -x "*/assets/fonts/unifont/*.mtx.php" \
+    -x "*/assets/fonts/unifont/*.cw.dat" \
+    -x "*/assets/fonts/unifont/*.cw127.php" \
     -x "*/vendor/setasign/tfpdf/ex.php" \
     -x "*/vendor/setasign/tfpdf/ex.pdf" \
     -x "*/vendor/setasign/tfpdf/HelloWorld.txt" \
@@ -42,7 +45,7 @@ zip -r "$OUTPUT_FILE" "$PLUGIN_NAME" \
     -x "*/composer.lock" \
     -x "*/package-lock.json"
 
-# Vouchers use only this Unicode font; the font license stays in the archive.
+# Keep DejaVu for reference text and characters absent from the bundled Yrsa font.
 zip "$OUTPUT_FILE" "$PLUGIN_NAME/vendor/setasign/tfpdf/font/unifont/DejaVuSansCondensed.ttf"
 
 # Get file size

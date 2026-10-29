@@ -133,11 +133,11 @@ HTML/plain templates can be overridden at `yourtheme/woocommerce/emails/course-c
 Courses that allow purchasing without choosing a date can send a personalized PDF gift voucher to a recipient. This applies only to **new purchases made with the gift delivery fields**; older gifts keep their existing behavior.
 
 1. Open the course product and enable **Abilita prenotazione corso** and **Permetti prenotazioni future senza specificare data e orario**.
-2. Select **Modello buono regalo PDF** from the media library and click **Aggiorna**. The selection stays saved even if the layout is unfinished; a notice explains any rendering error. Configure and preview the template before accepting gift purchases.
-3. Under **WooCommerce → Corsi → Impostazioni → Buoni regalo PDF**, configure the shared layout and error notification address (default: **info@evacaffe.it**).
-4. Select a course and enter sample names/message to preview the actual PDF. Preview includes unsaved layout changes; **Salva impostazioni voucher** saves them.
+2. In the product’s **Buono regalo PDF** box, select a PDF from the media library and configure its text positions. Page dimensions and orientation are read automatically from the PDF. Click **Aggiorna** to save. The PDF selection stays saved even if the layout is unfinished; an invalid layout does not replace the previous configuration.
+3. Alternatively, open **WooCommerce → Corsi → Impostazioni → Buoni regalo PDF**, select a course (including courses without a PDF), edit the same PDF/layout controls, and click **Salva configurazione del corso**. Each course has an independent layout. The error notification email remains global (default: **info@evacaffe.it**) and has its own save button.
+4. In either screen, enter sample names/message and generate a preview before accepting purchases. Preview uses the selected PDF and unsaved layout changes without saving them. Changing courses asks for confirmation when edits are pending.
 
-Gift purchasers enter the recipient email/name, sender display name, and an optional message of up to 500 characters. They can choose immediate sending after payment or a date whose **08:00 in the store timezone** is still in the future. Today is selectable before 08:00; from 08:00 onwards, the earliest scheduled date is tomorrow. The same cutoff is checked again at checkout. If payment arrives after the requested time, the voucher is queued immediately. One voucher covers the participant quantity on that course line. Classic and Block checkout use the same validation.
+Gift purchasers enter the recipient email/name, sender display name, and an optional message of up to 250 characters (including spaces) and two manual line breaks. Blank lines and surrounding whitespace are removed. These limits also apply to sample previews; existing purchased gifts retain their saved messages. They can choose immediate sending after payment or a date whose **08:00 in the store timezone** is still in the future. Today is selectable before 08:00; from 08:00 onwards, the earliest scheduled date is tomorrow. The same cutoff is checked again at checkout. If payment arrives after the requested time, the voucher is queued immediately. One voucher covers the participant quantity on that course line. Classic and Block checkout use the same validation.
 
 The recipient email includes the PDF, message, booking lookup reference, and a link to the existing booking page configured under **WooCommerce → Settings → Emails → Conferma acquisto corsi**. Without a valid booking page, it asks the recipient to contact the store. Recipient emails exclude purchaser billing details, prices, and unrelated order lines. Configure **Buono regalo corso** under WooCommerce email settings for its subject, heading, content, and HTML/plain format.
 
@@ -155,7 +155,7 @@ Default page size: **A4 landscape, 297 × 210 mm**. Reserve these areas, measure
 | Booking reference | 20 | 185 | 190 | 8 | 10 |
 | Participants | 220 | 185 | 57 | 8 | 10 |
 
-Every course uses the same layout; all PDFs must match its page dimensions. Positions, box sizes, font sizes, alignment, and page dimensions are editable in settings. Text wraps and shrinks to a minimum of 9 pt. Text that still cannot fit, or characters absent from the bundled font (including many emoji), are rejected before checkout. Template/layout changes apply to unsent gifts and retries; preview real gift details from the delivery list after changing a layout. Previews always use the **current** artwork/layout, including for an already sent gift.
+Each course can use a different page size and layout, even when sharing a PDF attachment. Use the **Stampa** checkbox beside each field to include or exclude recipient, sender, message, booking reference, or participants in that course’s PDF. Existing layouts keep all fields enabled. Exclusion affects the text added by the plugin; text already present in the PDF artwork remains. Coordinates are retained when a field is excluded. Positions, box sizes, font sizes, and alignment are editable per course; page dimensions are detected from the PDF and cannot be overridden. Existing global coordinates remain the initial values for courses without a saved layout. Changing one course does not change another. Replacing a PDF retains the coordinates, so check them against the new artwork; fields are never automatically scaled. Recipient, sender and message use the bundled **Yrsa** serif font (SIL Open Font License). Booking details use DejaVu Sans; it also preserves character support when a personal field contains glyphs absent from Yrsa. Text wraps and shrinks to a minimum of 9 pt. Text that still cannot fit, or characters absent from the bundled font (including many emoji), are rejected before checkout. Template/layout changes apply to unsent gifts and retries; preview real gift details from the delivery list after changing a layout. Previews always use the **current** artwork/layout, including for an already sent gift.
 
 #### Review and send gifts
 
@@ -182,6 +182,7 @@ PDF generation requires PHP **mbstring** and **zlib**, plus the bundled FPDI/tFP
 Run the gift regression checks (mail intercepted; temporary products/orders/PDFs/options cleaned up):
 
 ```bash
+node eva-course-bookings/tests/gift-note.js
 docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/gift-deliveries.php legacy
 docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/gift-deliveries.php hpos
 ```
@@ -412,6 +413,23 @@ The plugin supports both classic checkout and WooCommerce's new Block Checkout:
 For compatibility with caching plugins, slots are loaded via AJAX on the frontend.
 
 ## Changelog
+
+### 1.4.11
+
+- Choose which voucher components to render per course, in the product editor and course settings
+
+### 1.4.10
+
+- Limit new gift notes to 250 characters and two manual line breaks, removing blank lines in the storefront and sample previews
+
+### 1.4.9
+
+- Use Yrsa for personal voucher text, keeping DejaVu for booking details and Unicode fallback
+
+### 1.4.8
+
+- Configure independent gift PDF layouts from each product or the course selector in settings
+- Detect page dimensions from each PDF and preview unsaved template/layout changes
 
 ### 1.4.7
 

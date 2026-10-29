@@ -7,6 +7,7 @@ defined('ABSPATH') || exit;
 class Voucher_Pdf
 {
     const OPTION = 'eva_course_vouchers';
+    const LAYOUT_META = '_eva_gift_pdf_layout';
 
     public static function defaults()
     {
@@ -14,11 +15,11 @@ class Voucher_Pdf
             'error_email' => 'info@evacaffe.it',
             'width' => 297, 'height' => 210,
             'fields' => array(
-                'recipient' => array('x' => 20, 'y' => 85, 'width' => 257, 'height' => 12, 'size' => 18, 'align' => 'C'),
-                'sender' => array('x' => 20, 'y' => 105, 'width' => 257, 'height' => 10, 'size' => 14, 'align' => 'C'),
-                'note' => array('x' => 25, 'y' => 125, 'width' => 247, 'height' => 45, 'size' => 12, 'align' => 'L'),
-                'reference' => array('x' => 20, 'y' => 185, 'width' => 190, 'height' => 8, 'size' => 10, 'align' => 'L'),
-                'quantity' => array('x' => 220, 'y' => 185, 'width' => 57, 'height' => 8, 'size' => 10, 'align' => 'R'),
+                'recipient' => array('enabled' => true, 'x' => 20, 'y' => 85, 'width' => 257, 'height' => 12, 'size' => 18, 'align' => 'C'),
+                'sender' => array('enabled' => true, 'x' => 20, 'y' => 105, 'width' => 257, 'height' => 10, 'size' => 14, 'align' => 'C'),
+                'note' => array('enabled' => true, 'x' => 25, 'y' => 125, 'width' => 247, 'height' => 45, 'size' => 12, 'align' => 'L'),
+                'reference' => array('enabled' => true, 'x' => 20, 'y' => 185, 'width' => 190, 'height' => 8, 'size' => 10, 'align' => 'L'),
+                'quantity' => array('enabled' => true, 'x' => 220, 'y' => 185, 'width' => 57, 'height' => 8, 'size' => 10, 'align' => 'R'),
             ),
         );
     }
@@ -28,9 +29,31 @@ class Voucher_Pdf
         return array_replace_recursive(self::defaults(), (array) get_option(self::OPTION, array()));
     }
 
+    public static function layout($product_id)
+    {
+        $layout = get_post_meta($product_id, self::LAYOUT_META, true);
+        return '' === $layout ? self::settings()['fields'] : $layout;
+    }
+
+    private static function source($pdf, $attachment_id)
+    {
+        if (1 !== $pdf->setSourceFile(self::template_path($attachment_id))) {
+            throw new \RuntimeException('Il modello voucher deve contenere una sola pagina.');
+        }
+        $page = $pdf->importPage(1);
+        return array($page, $pdf->getTemplateSize($page));
+    }
+
+    public static function dimensions($attachment_id)
+    {
+        self::load_library();
+        list(, $dimensions) = self::source(new \setasign\Fpdi\Tfpdf\Fpdi(), $attachment_id);
+        return array('width' => $dimensions['width'], 'height' => $dimensions['height']);
+    }
+
     public static function validate_settings($input)
     {
-        if (! is_array($input)) {
+        if (! is_array($input) || ! is_array($input['fields'] ?? null)) {
             return new \WP_Error('layout', 'Impostazioni voucher non valide.');
         }
         $settings = self::defaults();
@@ -46,18 +69,31 @@ class Voucher_Pdf
         $settings['error_email'] = sanitize_email($input['error_email']);
         foreach ($settings['fields'] as $name => &$field) {
             $values = $input['fields'][$name] ?? array();
+            if (! is_array($values)) {
+                return new \WP_Error('layout', 'Configurazione del campo non valida.');
+            }
+            if (array_key_exists('enabled', $values) && ! in_array($values['enabled'], array(true, false, 0, 1, '0', '1'), true)) {
+                return new \WP_Error('layout', 'Scegli se stampare il campo nel voucher.');
+            }
+            $field['enabled'] = (bool) ($values['enabled'] ?? true);
             foreach (array('x', 'y', 'width', 'height', 'size') as $key) {
                 if (! isset($values[$key]) || ! is_numeric($values[$key]) || ! is_finite((float) $values[$key])) {
                     return new \WP_Error('layout', 'Coordinate e dimensioni dei campi non valide.');
                 }
                 $field[$key] = (float) $values[$key];
             }
-            if ($field['x'] < 0 || $field['y'] < 0 || $field['width'] <= 2 || $field['height'] <= 0 ||
-                $field['x'] + $field['width'] > $settings['width'] || $field['y'] + $field['height'] > $settings['height'] ||
-                $field['size'] < 9 || $field['size'] > 48 || ! in_array($values['align'] ?? '', array('L', 'C', 'R'), true)) {
-                return new \WP_Error('layout', 'I campi devono rientrare nella pagina; carattere tra 9 e 48 pt.');
+            if (! in_array($values['align'] ?? '', array('L', 'C', 'R'), true)) {
+                return new \WP_Error('layout', 'Allineamento del campo non valido.');
             }
             $field['align'] = $values['align'];
+            if (! $field['enabled']) {
+                continue;
+            }
+            if ($field['x'] < 0 || $field['y'] < 0 || $field['width'] <= 2 || $field['height'] <= 0 ||
+                $field['x'] + $field['width'] > $settings['width'] || $field['y'] + $field['height'] > $settings['height'] ||
+                $field['size'] < 9 || $field['size'] > 48) {
+                return new \WP_Error('layout', 'I campi devono rientrare nella pagina; carattere tra 9 e 48 pt.');
+            }
         }
         return $settings;
     }
@@ -88,18 +124,17 @@ class Voucher_Pdf
         return array('recipient' => 'Giulia Rossi', 'sender' => 'Marco e amici', 'note' => "Buon compleanno!\nUn’esperienza speciale da condividere.", 'reference' => '12345', 'quantity' => 2);
     }
 
-    public static function render($attachment_id, array $data, $settings = null)
+    public static function render($product_id, array $data, $fields = null, $attachment_id = null)
     {
         self::load_library();
-        $settings = self::validate_settings(null === $settings ? self::settings() : $settings);
-        if (is_wp_error($settings)) {
-            throw new \RuntimeException($settings->get_error_message());
-        }
         $pdf = new class extends \setasign\Fpdi\Tfpdf\Fpdi {
             public function __construct()
             {
                 parent::__construct();
+                $this->fontpath = EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'assets/fonts/';
+                $this->AddFont('Yrsa', '', 'Yrsa-Regular.ttf', true);
                 $this->fontpath = EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'vendor/setasign/tfpdf/font/';
+                $this->AddFont('DejaVu', '', 'DejaVuSansCondensed.ttf', true);
             }
 
             public function supports($text)
@@ -117,20 +152,20 @@ class Voucher_Pdf
                 return true;
             }
         };
-        if (1 !== $pdf->setSourceFile(self::template_path($attachment_id))) {
-            throw new \RuntimeException('Il modello voucher deve contenere una sola pagina.');
-        }
-        $page = $pdf->importPage(1);
-        $dimensions = $pdf->getTemplateSize($page);
-        if (abs($dimensions['width'] - $settings['width']) > 0.5 || abs($dimensions['height'] - $settings['height']) > 0.5) {
-            throw new \RuntimeException(sprintf('Il PDF misura %.1f × %.1f mm; il layout è %.1f × %.1f mm. Imposta dimensioni e coordinate corrispondenti nelle impostazioni voucher.', $dimensions['width'], $dimensions['height'], $settings['width'], $settings['height']));
+        $attachment_id = null === $attachment_id ? get_post_meta($product_id, '_eva_gift_pdf_id', true) : $attachment_id;
+        list($page, $dimensions) = self::source($pdf, $attachment_id);
+        $settings = self::validate_settings(array(
+            'width' => $dimensions['width'], 'height' => $dimensions['height'],
+            'error_email' => self::settings()['error_email'],
+            'fields' => null === $fields ? self::layout($product_id) : $fields,
+        ));
+        if (is_wp_error($settings)) {
+            throw new \RuntimeException($settings->get_error_message());
         }
         $pdf->AddPage($dimensions['orientation'], array($dimensions['width'], $dimensions['height']));
         $pdf->SetAutoPageBreak(false);
         $pdf->SetMargins(0, 0, 0);
         $pdf->useImportedPage($page);
-        $pdf->AddFont('DejaVu', '', 'DejaVuSansCondensed.ttf', true);
-        $pdf->SetFont('DejaVu', '', 12);
         $text = array(
             'recipient' => 'Per: ' . ($data['recipient'] ?? ''),
             'sender' => 'Da: ' . ($data['sender'] ?? ''),
@@ -139,14 +174,22 @@ class Voucher_Pdf
             'quantity' => 'Partecipanti: ' . ($data['quantity'] ?? 1),
         );
         foreach ($text as $key => $value) {
+            $field = $settings['fields'][$key];
+            if (! $field['enabled']) {
+                continue;
+            }
             $value = str_replace(array("\r\n", "\r", "\t"), array("\n", "\n", '    '), (string) $value);
             if ('' === $value) {
                 continue;
             }
+            $personal = in_array($key, array('recipient', 'sender', 'note'), true);
+            $pdf->SetFont($personal ? 'Yrsa' : 'DejaVu', '', 12);
+            if ($personal && ! $pdf->supports($value)) {
+                $pdf->SetFont('DejaVu', '', 12);
+            }
             if (! $pdf->supports($value)) {
                 throw new \RuntimeException('Il campo ' . $key . ' contiene caratteri non supportati dal font del voucher. Rimuovi emoji o simboli non supportati.');
             }
-            $field = $settings['fields'][$key];
             for ($size = $field['size']; ; $size = max(9, $size - 0.5)) {
                 $pdf->SetFontSize($size);
                 $lines = self::wrap($pdf, $value, $field['width'] - 2);

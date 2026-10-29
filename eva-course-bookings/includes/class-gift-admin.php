@@ -11,10 +11,12 @@ class Gift_Admin
     public function __construct(Gift_Delivery $delivery)
     {
         $this->delivery = $delivery;
-        add_action('woocommerce_product_options_general_product_data', array($this, 'product_field'));
+        add_action('add_meta_boxes_product', array($this, 'product_box'));
         add_action('woocommerce_process_product_meta', array($this, 'save_product'));
         add_action('admin_enqueue_scripts', array($this, 'assets'));
         add_action('admin_post_eva_voucher_settings', array($this, 'save_settings'));
+        add_action('admin_post_eva_voucher_product', array($this, 'save_course'));
+        add_action('wp_ajax_eva_voucher_dimensions', array($this, 'dimensions'));
         add_action('admin_post_eva_voucher_preview', array($this, 'preview'));
         add_action('admin_post_eva_voucher_send', array($this, 'send'));
     }
@@ -23,59 +25,77 @@ class Gift_Admin
     {
         if (strpos($hook, 'eva-course-bookings') !== false || ('product' === get_post_type() && in_array($hook, array('post.php', 'post-new.php'), true))) {
             wp_enqueue_media();
-            wp_enqueue_script('eva-gift-admin', EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/gift-admin.js', array('jquery'), EVA_COURSE_BOOKINGS_VERSION, true);
+            wp_enqueue_script('eva-gift-note', EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/gift-note.js', array(), EVA_COURSE_BOOKINGS_VERSION, true);
+            wp_enqueue_script('eva-gift-admin', EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/gift-admin.js', array('jquery', 'eva-gift-note'), EVA_COURSE_BOOKINGS_VERSION, true);
         }
     }
 
-    public function product_field()
+    public function product_box()
     {
-        global $post;
-        $id = absint(get_post_meta($post->ID, '_eva_gift_pdf_id', true));
-        ?>
-        <p class="form-field">
-            <label for="eva-gift-pdf-id">Modello buono regalo PDF</label>
-            <input type="hidden" name="_eva_gift_pdf_id" id="eva-gift-pdf-id" value="<?php echo esc_attr($id); ?>">
-            <span id="eva-gift-pdf-name"><?php echo esc_html($id ? get_the_title($id) : 'Nessun modello'); ?></span>
-            <button type="button" class="button" id="eva-gift-pdf-select">Scegli PDF</button>
-            <button type="button" class="button" id="eva-gift-pdf-clear">Rimuovi</button>
-            <span class="description">Un PDF valido abilita l’invio programmato per i nuovi regali (richiede la prenotazione senza data). Layout e anteprima in Corsi → Impostazioni.</span>
-        </p>
-        <?php
+        add_meta_box('eva-gift-voucher', 'Buono regalo PDF', array($this, 'product_field'), 'product', 'normal');
+    }
+
+    public function product_field($post)
+    {
+        $this->render_editor($post->ID);
+        echo '<p>Premi <strong>Aggiorna</strong> per salvare il PDF e il layout di questo prodotto.</p>';
+    }
+
+    private function authorize_product($product_id)
+    {
+        if ('product' !== get_post_type($product_id) || ! current_user_can('manage_woocommerce') || ! current_user_can('edit_post', $product_id)) {
+            wp_die('Corso non valido o permesso negato.', '', array('response' => 403));
+        }
+    }
+
+    private function save_configuration($product_id)
+    {
+        $this->authorize_product($product_id);
+        if (! isset($_POST['_eva_gift_pdf_id']) || ! is_scalar($_POST['_eva_gift_pdf_id'])) {
+            return new \WP_Error('pdf', 'Seleziona un PDF dalla libreria media.');
+        }
+        $id = absint($_POST['_eva_gift_pdf_id']);
+        if ($id && ('attachment' !== get_post_type($id) || 'application/pdf' !== get_post_mime_type($id))) {
+            return new \WP_Error('pdf', 'Modello voucher non salvato: seleziona un PDF dalla libreria media.');
+        }
+        update_post_meta($product_id, '_eva_gift_pdf_id', $id);
+        if (! $id) {
+            return true;
+        }
+        try {
+            $fields = isset($_POST['voucher']) ? wp_unslash($_POST['voucher']['fields'] ?? array()) : Voucher_Pdf::layout($product_id);
+            Voucher_Pdf::render($product_id, Voucher_Pdf::sample(), $fields);
+            update_post_meta($product_id, Voucher_Pdf::LAYOUT_META, $fields);
+            return true;
+        } catch (\Throwable $error) {
+            return new \WP_Error('layout', 'PDF associato al corso, ma il buono non è ancora pronto all’invio. Correggi il layout del corso; il layout precedente è stato conservato: ' . $error->getMessage());
+        }
     }
 
     public function save_product($product_id)
     {
-        if (! current_user_can('manage_woocommerce') || ! isset($_POST['_eva_gift_pdf_id']) || ! is_scalar($_POST['_eva_gift_pdf_id'])) {
+        if (! isset($_POST['_eva_gift_pdf_id']) || ! current_user_can('manage_woocommerce') ||
+            ! wp_verify_nonce(is_string($_POST['eva_voucher_nonce'] ?? null) ? $_POST['eva_voucher_nonce'] : '', 'eva_voucher_settings')) {
             return;
         }
-        $id = absint($_POST['_eva_gift_pdf_id']);
-        if ($id && ('attachment' !== get_post_type($id) || 'application/pdf' !== get_post_mime_type($id))) {
-            \WC_Admin_Meta_Boxes::add_error('Modello voucher non salvato: seleziona un PDF dalla libreria media.');
-            return;
-        }
-        update_post_meta($product_id, '_eva_gift_pdf_id', $id);
-        if (! $id) {
-            return;
-        }
-        try {
-            Voucher_Pdf::render($id, Voucher_Pdf::sample());
-        } catch (\Throwable $error) {
-            \WC_Admin_Meta_Boxes::add_error('PDF associato al corso, ma il buono non è ancora pronto all’invio. Verifica il PDF e configura il layout in WooCommerce → Corsi → Impostazioni: ' . $error->getMessage());
+        $result = $this->save_configuration($product_id);
+        if (is_wp_error($result)) {
+            \WC_Admin_Meta_Boxes::add_error($result->get_error_message());
         }
     }
 
-    private function authorize($nonce)
+    private function authorize($nonce, $field = '_wpnonce')
     {
         if (! current_user_can('manage_woocommerce')) {
             wp_die('Permesso negato.', '', array('response' => 403));
         }
-        check_admin_referer($nonce);
+        check_admin_referer($nonce, $field);
     }
 
-    private function notice($message, $error, $tab)
+    private function notice($message, $error, $tab, $product_id = 0)
     {
         set_transient('eva_gift_notice_' . get_current_user_id(), array('message' => $message, 'error' => $error), 60);
-        wp_safe_redirect(admin_url('admin.php?page=eva-course-bookings&tab=' . $tab));
+        wp_safe_redirect(add_query_arg('voucher_product_id', $product_id, admin_url('admin.php?page=eva-course-bookings&tab=' . $tab)));
         exit;
     }
 
@@ -92,22 +112,39 @@ class Gift_Admin
     public function save_settings()
     {
         $this->authorize('eva_voucher_settings');
-        $settings = Voucher_Pdf::validate_settings(wp_unslash($_POST['voucher'] ?? array()));
-        if (is_wp_error($settings)) {
-            $this->notice($settings->get_error_message(), true, 'impostazioni');
+        $email = wp_unslash($_POST['voucher']['error_email'] ?? '');
+        if (! is_string($email) || ! is_email($email)) {
+            $this->notice('Inserisci un indirizzo valido per le notifiche di errore.', true, 'impostazioni');
         }
+        $settings = Voucher_Pdf::settings();
+        $settings['error_email'] = sanitize_email($email);
         update_option(Voucher_Pdf::OPTION, $settings, false);
-        $this->notice('Impostazioni voucher salvate. Le modifiche si applicano ai regali non ancora inviati.', false, 'impostazioni');
+        $this->notice('Email notifiche errori salvata.', false, 'impostazioni');
+    }
+
+    public function save_course()
+    {
+        $this->authorize('eva_voucher_settings', 'eva_voucher_nonce');
+        $product_id = absint($_POST['voucher_product_id'] ?? 0);
+        $result = $this->save_configuration($product_id);
+        $this->notice(is_wp_error($result) ? $result->get_error_message() : 'Configurazione del corso salvata. Le modifiche si applicano ai regali non ancora inviati.', is_wp_error($result), 'impostazioni', $product_id);
+    }
+
+    public function dimensions()
+    {
+        $this->authorize('eva_voucher_settings', 'eva_voucher_nonce');
+        $this->authorize_product(absint($_POST['voucher_product_id'] ?? 0));
+        try {
+            wp_send_json_success(Voucher_Pdf::dimensions(absint($_POST['_eva_gift_pdf_id'] ?? 0)));
+        } catch (\Throwable $error) {
+            wp_send_json_error($error->getMessage(), 400);
+        }
     }
 
     public function preview()
     {
-        $this->authorize('eva_voucher_settings');
+        $this->authorize('eva_voucher_settings', isset($_POST['eva_voucher_nonce']) ? 'eva_voucher_nonce' : '_wpnonce');
         try {
-            $settings = isset($_POST['voucher']) ? Voucher_Pdf::validate_settings(wp_unslash($_POST['voucher'])) : Voucher_Pdf::settings();
-            if (is_wp_error($settings)) {
-                throw new \RuntimeException($settings->get_error_message());
-            }
             $data = Voucher_Pdf::sample();
             if (! empty($_POST['item_id'])) {
                 $order = wc_get_order(absint($_POST['order_id'] ?? 0));
@@ -118,16 +155,19 @@ class Gift_Admin
                 $product_id = $item->get_product_id();
                 $data = array_merge((array) $item->get_meta('_eva_gift_data'), array('reference' => $order->get_id(), 'quantity' => Gift_Delivery::remaining($order, $item)));
             } else {
-                $product_id = absint($_POST['product_id'] ?? 0);
+                $product_id = absint($_POST['voucher_product_id'] ?? 0);
                 foreach (array('recipient', 'sender', 'note') as $key) {
                     $value = $_POST['sample'][$key] ?? $data[$key];
-                    if (! is_string($value) || mb_strlen($value) > ('note' === $key ? 500 : 100)) {
+                    if (! is_string($value) || ('note' !== $key && mb_strlen($value) > 100)) {
                         throw new \RuntimeException('Testo anteprima non valido o troppo lungo.');
                     }
-                    $data[$key] = sanitize_textarea_field(wp_unslash($value));
+                    $data[$key] = 'note' === $key ? Gift_Delivery::validate_note(wp_unslash($value)) : sanitize_textarea_field(wp_unslash($value));
                 }
             }
-            $bytes = Voucher_Pdf::render(get_post_meta($product_id, '_eva_gift_pdf_id', true), $data, $settings);
+            $this->authorize_product($product_id);
+            $fields = isset($_POST['voucher']) ? wp_unslash($_POST['voucher']['fields'] ?? array()) : null;
+            $pdf_id = isset($_POST['_eva_gift_pdf_id']) ? absint($_POST['_eva_gift_pdf_id']) : null;
+            $bytes = Voucher_Pdf::render($product_id, $data, $fields, $pdf_id);
             nocache_headers();
             header('Content-Type: application/pdf');
             header('Content-Disposition: inline; filename="anteprima-voucher.pdf"');
@@ -165,45 +205,89 @@ class Gift_Admin
 
     public function render_settings()
     {
+        if (! current_user_can('manage_woocommerce')) { return; }
         $this->show_notice();
         $settings = Voucher_Pdf::settings();
-        $labels = array('recipient' => 'Destinatario', 'sender' => 'Mittente', 'note' => 'Messaggio', 'reference' => 'Riferimento prenotazione', 'quantity' => 'Partecipanti');
+        $product_id = absint($_GET['voucher_product_id'] ?? 0);
+        $courses = $this->courses();
+        $available = array_filter($courses, static function ($course) { return current_user_can('edit_post', $course->ID); });
+        if (! in_array($product_id, array_map('intval', wp_list_pluck($available, 'ID')), true)) { $product_id = 0; }
         ?>
         <hr><h2>Buoni regalo PDF</h2>
-        <p>Carica un PDF di una pagina per ogni corso dalla scheda prodotto. Consigliato: A4 orizzontale, PDF 1.4 non protetto e senza campi modulo. Il plugin aggiunge i testi nelle aree vuote. Coordinate in millimetri dall’angolo superiore sinistro.</p>
+        <p>Ogni corso ha il proprio PDF e il proprio layout. Le dimensioni della pagina vengono lette dal PDF. Coordinate in millimetri dall’angolo superiore sinistro.</p>
         <p>Invio alle 08:00 nel fuso del negozio: <strong><?php echo esc_html(wp_timezone_string()); ?></strong>. Per puntualità, configura cron sul server ogni minuto. “Inviato” indica accettazione da parte del sistema email, non consegna nella casella.</p>
         <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post">
             <?php wp_nonce_field('eva_voucher_settings'); ?>
-            <p><label>Email notifiche errori <input type="email" required name="voucher[error_email]" value="<?php echo esc_attr($settings['error_email']); ?>"></label></p>
-            <p><?php foreach (array('width' => 'Larghezza pagina', 'height' => 'Altezza pagina') as $key => $label) : ?>
-                <label><?php echo esc_html($label); ?> <input type="number" required min="50" max="1000" step="0.1" name="voucher[<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr($settings[$key]); ?>" style="width:90px"> mm</label>
-            <?php endforeach; ?></p>
-            <table class="widefat striped"><thead><tr><th>Campo</th><th>X</th><th>Y</th><th>Larghezza</th><th>Altezza</th><th>Carattere (pt)</th><th>Allineamento</th></tr></thead><tbody>
-                <?php foreach ($settings['fields'] as $name => $field) : ?>
-                    <tr><th scope="row"><?php echo esc_html($labels[$name]); ?></th>
+            <input type="hidden" name="action" value="eva_voucher_settings">
+            <p><label>Email notifiche errori <input type="email" required name="voucher[error_email]" value="<?php echo esc_attr($settings['error_email']); ?>"></label>
+            <button class="button" type="submit">Salva email notifiche</button></p>
+        </form>
+        <form method="get" id="eva-voucher-course-selector">
+            <input type="hidden" name="page" value="eva-course-bookings"><input type="hidden" name="tab" value="impostazioni">
+            <p><label>Corso <select name="voucher_product_id"><option value="">Scegli un corso</option>
+                <?php foreach ($available as $course) : ?>
+                    <option value="<?php echo esc_attr($course->ID); ?>" <?php selected($product_id, $course->ID); ?>><?php echo esc_html($course->post_title); ?></option>
+                <?php endforeach; ?>
+            </select></label> <button type="submit" class="button">Carica corso</button></p>
+        </form>
+        <p class="description">Sono elencati anche i corsi senza PDF. Se un corso non compare, abilita “Abilita prenotazione corso” nella scheda prodotto.</p>
+        <?php if ($product_id) : ?>
+            <h3><?php echo esc_html(get_the_title($product_id)); ?></h3>
+            <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post" id="eva-voucher-course-form">
+                <input type="hidden" name="action" value="eva_voucher_product">
+                <?php $this->render_editor($product_id); ?>
+                <p><button class="button button-primary" type="submit">Salva configurazione del corso</button></p>
+            </form>
+        <?php endif;
+    }
+
+    private function render_editor($product_id)
+    {
+        $id = absint(get_post_meta($product_id, '_eva_gift_pdf_id', true));
+        $fields = Voucher_Pdf::layout($product_id);
+        $labels = array('recipient' => 'Destinatario', 'sender' => 'Mittente', 'note' => 'Messaggio', 'reference' => 'Riferimento prenotazione', 'quantity' => 'Partecipanti');
+        $dimensions = 'Seleziona un PDF per rilevare le dimensioni.';
+        if ($id) {
+            try {
+                $size = Voucher_Pdf::dimensions($id);
+                $dimensions = sprintf('%.1f × %.1f mm', $size['width'], $size['height']);
+            } catch (\Throwable $error) { $dimensions = $error->getMessage(); }
+        }
+        ?>
+        <div class="eva-voucher-editor" data-post-url="<?php echo esc_url(admin_url('admin-post.php')); ?>" data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>">
+            <?php wp_nonce_field('eva_voucher_settings', 'eva_voucher_nonce', false); ?>
+            <input type="hidden" name="voucher_product_id" value="<?php echo esc_attr($product_id); ?>">
+            <p><strong>Modello buono regalo PDF</strong>
+                <input type="hidden" name="_eva_gift_pdf_id" id="eva-gift-pdf-id" value="<?php echo esc_attr($id); ?>">
+                <span id="eva-gift-pdf-name"><?php echo esc_html($id ? get_the_title($id) : 'Nessun modello'); ?></span>
+                <button type="button" class="button" id="eva-gift-pdf-select">Scegli PDF</button>
+                <button type="button" class="button" id="eva-gift-pdf-clear">Rimuovi</button>
+            </p>
+            <p>Dimensioni pagina: <strong class="eva-voucher-dimensions" role="status"><?php echo esc_html($dimensions); ?></strong></p>
+            <p class="description">PDF di una pagina, non protetto e senza campi modulo, preferibilmente PDF 1.4. Un PDF abilita gli invii regalo nei corsi che consentono l’acquisto senza data. Ogni campo deve rientrare nella pagina; le coordinate partono dall’angolo superiore sinistro.</p>
+            <p>Seleziona nella colonna <strong>Stampa</strong> i testi da aggiungere al PDF per questo corso. I testi già presenti nel modello PDF rimangono visibili.</p>
+            <div style="overflow-x:auto"><table class="widefat striped"><thead><tr><th>Campo</th><th>Stampa</th><th>X</th><th>Y</th><th>Larghezza</th><th>Altezza</th><th>Carattere (pt)</th><th>Allineamento</th></tr></thead><tbody>
+                <?php foreach ($labels as $name => $label) : $field = $fields[$name] ?? Voucher_Pdf::defaults()['fields'][$name]; ?>
+                    <tr><th scope="row"><?php echo esc_html($label); ?></th>
+                    <td><input type="hidden" name="voucher[fields][<?php echo esc_attr($name); ?>][enabled]" value="0">
+                        <input type="checkbox" class="eva-voucher-field-enabled" aria-label="<?php echo esc_attr('Stampa ' . $label); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][enabled]" value="1" <?php checked($field['enabled'] ?? true); ?>></td>
                     <?php foreach (array('x', 'y', 'width', 'height', 'size') as $key) : ?>
-                        <td><input aria-label="<?php echo esc_attr($labels[$name] . ' ' . $key); ?>" type="number" required step="0.1" min="<?php echo 'size' === $key ? '9' : '0'; ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr($field[$key]); ?>" style="width:80px"></td>
+                        <td><input aria-label="<?php echo esc_attr($label . ' ' . $key); ?>" type="number" <?php wp_readonly(! ($field['enabled'] ?? true)); ?> required step="any" min="<?php echo 'size' === $key ? '9' : '0'; ?>" <?php if ('size' === $key) { echo 'max="48"'; } ?> name="voucher[fields][<?php echo esc_attr($name); ?>][<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr($field[$key]); ?>" style="width:80px"></td>
                     <?php endforeach; ?>
-                    <td><select aria-label="<?php echo esc_attr($labels[$name] . ' allineamento'); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][align]">
-                        <?php foreach (array('L' => 'Sinistra', 'C' => 'Centro', 'R' => 'Destra') as $value => $label) : ?><option value="<?php echo esc_attr($value); ?>" <?php selected($field['align'], $value); ?>><?php echo esc_html($label); ?></option><?php endforeach; ?>
+                    <td><select aria-label="<?php echo esc_attr($label . ' allineamento'); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][align]">
+                        <?php foreach (array('L' => 'Sinistra', 'C' => 'Centro', 'R' => 'Destra') as $value => $text) : ?><option value="<?php echo esc_attr($value); ?>" <?php selected($field['align'], $value); ?>><?php echo esc_html($text); ?></option><?php endforeach; ?>
                     </select></td></tr>
                 <?php endforeach; ?>
-            </tbody></table>
-            <p><button class="button button-primary" type="submit" name="action" value="eva_voucher_settings">Salva impostazioni voucher</button></p>
+            </tbody></table></div>
             <h3>Anteprima con il layout attuale, anche prima del salvataggio</h3>
-            <p><label>Corso <select name="product_id"><option value="">Scegli un corso con PDF</option>
-                <?php foreach ($this->courses() as $course) : if (! get_post_meta($course->ID, '_eva_gift_pdf_id', true)) { continue; } ?>
-                    <option value="<?php echo esc_attr($course->ID); ?>"><?php echo esc_html($course->post_title); ?></option>
-                <?php endforeach; ?>
-            </select></label></p>
-            <p class="description">Se un corso non compare, abilita “Abilita prenotazione corso” nel prodotto, scegli il modello PDF e premi “Aggiorna”. Il PDF può essere associato prima di completare il layout.</p>
             <?php foreach (array('recipient' => 'Destinatario', 'sender' => 'Mittente') as $key => $label) : ?>
                 <p><label><?php echo esc_html($label); ?> <input type="text" maxlength="100" name="sample[<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr(Voucher_Pdf::sample()[$key]); ?>"></label></p>
             <?php endforeach; ?>
-            <p><label>Messaggio<br><textarea name="sample[note]" maxlength="500" rows="4" cols="70"><?php echo esc_textarea(Voucher_Pdf::sample()['note']); ?></textarea></label></p>
-            <p><button class="button" type="submit" name="action" value="eva_voucher_preview" formtarget="eva-voucher-preview">Genera anteprima PDF</button></p>
-        </form>
-        <iframe name="eva-voucher-preview" title="Anteprima buono regalo" style="width:100%;height:650px;border:1px solid #ccc" src="about:blank"></iframe>
+            <p><label>Messaggio<br><textarea class="eva-gift-note" name="sample[note]" maxlength="<?php echo esc_attr(Gift_Delivery::NOTE_MAX_LENGTH); ?>" data-max-breaks="<?php echo esc_attr(Gift_Delivery::NOTE_MAX_BREAKS); ?>" aria-describedby="eva-voucher-note-help" rows="4" style="width:100%;max-width:700px"><?php echo esc_textarea(Voucher_Pdf::sample()['note']); ?></textarea></label></p>
+            <p id="eva-voucher-note-help">Massimo <?php echo esc_html(Gift_Delivery::NOTE_MAX_LENGTH); ?> caratteri, spazi inclusi, e <?php echo esc_html(Gift_Delivery::NOTE_MAX_BREAKS); ?> a capo manuali. Le righe vuote vengono eliminate.</p>
+            <p><button class="button eva-voucher-preview" type="button">Genera anteprima PDF</button></p>
+            <iframe name="eva-voucher-preview-<?php echo esc_attr($product_id); ?>" title="Anteprima buono regalo" style="width:100%;height:650px;border:1px solid #ccc" src="about:blank"></iframe>
+        </div>
         <?php
     }
 

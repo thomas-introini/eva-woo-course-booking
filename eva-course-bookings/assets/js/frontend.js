@@ -192,6 +192,7 @@
         $('#eva-gift-email-field').hide();
         $('#eva-gift-email').val('');
         $('.eva-gift-details input, .eva-gift-details textarea').val('');
+        $('#eva-gift-note').each(function () { this.setCustomValidity(''); });
         $('#eva-gift-mode').val('now').trigger('change');
         $('#eva-gift-validation-message').hide();
       }

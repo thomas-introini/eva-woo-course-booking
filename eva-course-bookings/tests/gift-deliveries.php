@@ -101,35 +101,174 @@ try {
     wp_set_current_user($admin[0]->ID);
     update_post_meta($product->get_id(), '_eva_gift_pdf_id', 0);
     $unfinished_layout = $settings;
-    $unfinished_layout['width'] = 300;
+    $unfinished_layout['fields']['note']['x'] = 1000;
     update_option(Voucher_Pdf::OPTION, $unfinished_layout);
-    $_POST = array('_eva_gift_pdf_id' => (string) $attachment);
+    $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => (string) $attachment);
     WC_Admin_Meta_Boxes::$meta_box_errors = array();
     $plugin->gift_admin->save_product($product->get_id());
     $check((int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true) === $attachment, 'A PDF selection must persist before its layout is configured.');
     $check(strpos(implode(' ', WC_Admin_Meta_Boxes::$meta_box_errors), 'PDF associato') !== false, 'Unfinished layout must show an actionable warning after saving the PDF.');
     ob_start(); $plugin->gift_admin->render_settings(); $unfinished_html = ob_get_clean();
-    $check(strpos($unfinished_html, '<option value="' . $product->get_id() . '">') !== false, 'An assigned PDF must make the course selectable while configuring its layout.');
+    $check(strpos($unfinished_html, '<option value="' . $product->get_id() . '"') !== false, 'An assigned PDF must make the course selectable while configuring its layout.');
     $unfinished_rejected = false;
-    try { Voucher_Pdf::render($attachment, Voucher_Pdf::sample()); } catch (Throwable $error) { $unfinished_rejected = true; }
+    try { Voucher_Pdf::render($product->get_id(), Voucher_Pdf::sample()); } catch (Throwable $error) { $unfinished_rejected = true; }
     $check($unfinished_rejected, 'Persisting a PDF selection must not bypass rendering validation.');
     update_option(Voucher_Pdf::OPTION, $settings);
-    $_POST = array('_eva_gift_pdf_id' => (string) $product->get_id());
+    $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => (string) $product->get_id());
     $plugin->gift_admin->save_product($product->get_id());
     $check((int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true) === $attachment, 'A non-PDF media selection must not overwrite the existing PDF.');
     wp_set_current_user(0);
-    $_POST = array('_eva_gift_pdf_id' => '0');
+    $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => '0');
     $plugin->gift_admin->save_product($product->get_id());
     $check((int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true) === $attachment, 'Unauthorized users must not change the PDF assignment.');
     wp_set_current_user($admin[0]->ID);
+    $_POST['eva_voucher_nonce'] = wp_create_nonce('eva_voucher_settings');
     $plugin->gift_admin->save_product($product->get_id());
     $check(0 === (int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true), 'Removing a PDF must persist.');
     ob_start(); $plugin->frontend->render_booking_selector($product->get_id()); $legacy_selector = ob_get_clean();
     $check(strpos($legacy_selector, 'name="eva_gift_email"') !== false && strpos($legacy_selector, 'name="eva_gift_mode"') === false, 'Courses without a saved PDF must retain the legacy gift form.');
-    $_POST = array('_eva_gift_pdf_id' => (string) $attachment);
+    $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => (string) $attachment);
     WC_Admin_Meta_Boxes::$meta_box_errors = array();
     $plugin->gift_admin->save_product($product->get_id());
     $check((int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true) === $attachment && ! WC_Admin_Meta_Boxes::$meta_box_errors, 'A configured PDF must save without errors.');
+    // Two courses must remain independent, including when edited from the settings tab.
+    $large_background = new tFPDF('L', 'mm', array(437.4, 616.7));
+    $large_background->AddPage();
+    $large_background->SetFont('Helvetica', '', 28);
+    $large_background->Text(55, 30, 'LARGE COURSE VOUCHER');
+    $large_upload = wp_upload_bits('eva-large-voucher-test.pdf', null, $large_background->Output('S'));
+    $check(! $large_upload['error'], 'Large PDF upload must succeed.');
+    $large_attachment = wp_insert_attachment(array('post_title' => 'Large voucher test', 'post_mime_type' => 'application/pdf'), $large_upload['file']);
+    $posts[] = $large_attachment;
+    $second_product = new WC_Product_Simple();
+    $second_product->set_name('Second course with independent layout');
+    $second_product->set_regular_price('40');
+    $second_product->update_meta_data('_eva_course_enabled', 'yes');
+    $second_product->update_meta_data('_eva_course_skip_slot', 'yes');
+    $second_product->save();
+    $posts[] = $second_product->get_id();
+    $check(Voucher_Pdf::layout($second_product->get_id()) === $settings['fields'], 'Unconfigured products must start from the previous global coordinates.');
+    ob_start(); $plugin->gift_admin->render_settings(); $course_choices = ob_get_clean();
+    $check(strpos($course_choices, $second_product->get_name()) !== false, 'The settings selector must include courses without PDFs.');
+    $large_fields = $settings['fields'];
+    foreach ($large_fields as &$field) { $field['x'] += 30; $field['y'] += 100; }
+    unset($field);
+    $large_fields['note']['y'] = 350;
+    $large_fields['note']['size'] = 40;
+    $first_layout = Voucher_Pdf::layout($product->get_id());
+    $redirect = '';
+    $stop_redirect = static function ($location) use (&$redirect) {
+        $redirect = $location;
+        throw new RuntimeException('gift-test-redirect');
+    };
+    add_filter('wp_redirect', $stop_redirect, -1000);
+    try {
+        $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), 'voucher_product_id' => $second_product->get_id(), '_eva_gift_pdf_id' => $large_attachment, 'voucher' => array('fields' => $large_fields, 'width' => 1, 'height' => 1));
+        $_REQUEST = $_POST;
+        try { $plugin->gift_admin->save_course(); } catch (RuntimeException $error) { $check('gift-test-redirect' === $error->getMessage(), $error->getMessage()); }
+        $check(strpos($redirect, 'voucher_product_id=' . $second_product->get_id()) !== false, 'Settings save must retain the selected course.');
+        $check(Voucher_Pdf::layout($second_product->get_id()) == $large_fields && Voucher_Pdf::layout($product->get_id()) === $first_layout, 'Saving a course from settings must not change another course.');
+        $_POST['voucher']['fields']['reference']['enabled'] = '0';
+        try { $plugin->gift_admin->save_course(); } catch (RuntimeException $error) { $check('gift-test-redirect' === $error->getMessage(), $error->getMessage()); }
+        $check('0' === Voucher_Pdf::layout($second_product->get_id())['reference']['enabled'] && Voucher_Pdf::layout($product->get_id()) === $first_layout, 'Settings saves must persist exclusions only for the selected course.');
+        $_POST['voucher']['fields'] = $large_fields;
+        try { $plugin->gift_admin->save_course(); } catch (RuntimeException $error) { $check('gift-test-redirect' === $error->getMessage(), $error->getMessage()); }
+        $_POST = array('voucher' => array('error_email' => 'alerts@example.test'));
+        $_REQUEST = array('_wpnonce' => wp_create_nonce('eva_voucher_settings'));
+        try { $plugin->gift_admin->save_settings(); } catch (RuntimeException $error) { $check('gift-test-redirect' === $error->getMessage(), $error->getMessage()); }
+        $check(Voucher_Pdf::settings()['fields'] === $settings['fields'] && Voucher_Pdf::layout($second_product->get_id()) == $large_fields, 'Global notification settings must preserve legacy and product coordinates.');
+    } finally { remove_filter('wp_redirect', $stop_redirect, -1000); }
+    $size = Voucher_Pdf::dimensions($large_attachment);
+    $check(abs($size['width'] - 616.7) < 0.1 && abs($size['height'] - 437.4) < 0.1, 'Page dimensions must come from the PDF, ignoring submitted dimensions.');
+    $large_bytes = Voucher_Pdf::render($second_product->get_id(), Voucher_Pdf::sample());
+    $check(strpos($large_bytes, 'Yrsa') !== false && strpos($large_bytes, 'DejaVuSansCondensed') !== false, 'Vouchers must embed Yrsa for personal text and DejaVu for booking details.');
+    $international = array_merge(Voucher_Pdf::sample(), array('recipient' => 'Мария', 'note' => 'Χρόνια πολλά'));
+    $check(strncmp(Voucher_Pdf::render($product->get_id(), $international), '%PDF-', 5) === 0, 'Personal fields must retain Greek and Cyrillic support through the fallback font.');
+    $pdf_content = static function ($bytes) {
+        $parser = new \setasign\Fpdi\PdfParser\PdfParser(\setasign\Fpdi\PdfParser\StreamReader::createByString($bytes));
+        return (new \setasign\Fpdi\PdfReader\PdfReader($parser))->getPage(1)->getContentStream();
+    };
+    $tokens = array('recipient' => 'RECIPIENTTOKEN', 'sender' => 'SENDERTOKEN', 'note' => 'NOTETOKEN', 'reference' => 'REFTOKEN', 'quantity' => '987');
+    $legacy_fields = $first_layout;
+    foreach ($legacy_fields as &$field) { unset($field['enabled']); }
+    unset($field);
+    $legacy_content = $pdf_content(Voucher_Pdf::render($product->get_id(), $tokens, $legacy_fields));
+    foreach ($tokens as $name => $token) {
+        $check(strpos($legacy_content, mb_convert_encoding($token, 'UTF-16BE', 'UTF-8')) !== false, 'Existing layouts without visibility flags must still render ' . $name . '.');
+        $excluded = $first_layout;
+        $excluded[$name]['enabled'] = '0';
+        $excluded[$name]['x'] = 1000;
+        $bytes = Voucher_Pdf::render($product->get_id(), $tokens, $excluded);
+        $content = $pdf_content($bytes);
+        foreach ($tokens as $other => $expected) {
+            $present = strpos($content, mb_convert_encoding($expected, 'UTF-16BE', 'UTF-8')) !== false;
+            $check($present === ($other !== $name), 'Excluding ' . $name . ' must omit only that component, even with unused coordinates outside the page.');
+        }
+        if ($preview_directory) {
+            wp_mkdir_p($preview_directory);
+            file_put_contents($preview_directory . '/without-' . $name . '.pdf', $bytes);
+        }
+    }
+    $all_hidden = $first_layout;
+    foreach ($all_hidden as &$field) { $field['enabled'] = false; }
+    unset($field);
+    $hidden_content = $pdf_content(Voucher_Pdf::render($product->get_id(), $tokens, $all_hidden));
+    foreach ($tokens as $token) { $check(strpos($hidden_content, mb_convert_encoding($token, 'UTF-16BE', 'UTF-8')) === false, 'All components may be excluded, leaving the original artwork.'); }
+    $hidden_note = $first_layout;
+    $hidden_note['note']['enabled'] = false;
+    $check(strncmp(Voucher_Pdf::render($product->get_id(), array_merge($tokens, array('note' => '🎂')), $hidden_note), '%PDF-', 5) === 0, 'Excluded fields must skip glyph and text-fit checks.');
+    $invalid_flag = $settings;
+    $invalid_flag['fields']['note']['enabled'] = array('bad');
+    $check(is_wp_error(Voucher_Pdf::validate_settings($invalid_flag)), 'Malformed visibility flags must be rejected.');
+    $preview_fields = $large_fields;
+    $preview_fields['note']['x'] += 40;
+    $preview_bytes = Voucher_Pdf::render($second_product->get_id(), Voucher_Pdf::sample(), $preview_fields, $large_attachment);
+    $check($preview_bytes !== $large_bytes && Voucher_Pdf::layout($second_product->get_id()) == $large_fields, 'Unsaved preview coordinates must affect output without persisting.');
+    foreach (array('settings', 'product') as $screen) {
+        $_GET = array('voucher_product_id' => $second_product->get_id());
+        ob_start();
+        'settings' === $screen ? $plugin->gift_admin->render_settings() : $plugin->gift_admin->product_field(get_post($second_product->get_id()));
+        $editor_html = ob_get_clean();
+        $check(strpos($editor_html, '616.7') !== false && strpos($editor_html, 'voucher[fields][note][x]') !== false && strpos($editor_html, 'value="350"') !== false, 'Both editors must load the same course layout and PDF dimensions.');
+        $check(5 === substr_count($editor_html, 'class="eva-voucher-field-enabled"') && strpos($editor_html, 'voucher[fields][reference][enabled]') !== false, 'Both screens must expose a visibility checkbox for every component.');
+        $check(strpos($editor_html, 'name="voucher[width]"') === false, 'Page size must not be manually editable.');
+        if ('product' === $screen) { $check(strpos($editor_html, '<form') === false, 'The product editor must not introduce a nested form.'); }
+    }
+    $excluded_fields = $large_fields;
+    $excluded_fields['reference']['enabled'] = '0';
+    $excluded_fields['quantity']['enabled'] = false;
+    $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => $large_attachment, 'voucher' => array('fields' => $excluded_fields));
+    $plugin->gift_admin->save_product($second_product->get_id());
+    $check(Voucher_Pdf::layout($second_product->get_id()) == $excluded_fields && Voucher_Pdf::layout($product->get_id()) === $first_layout, 'Product saves must preserve component visibility and affect only that course.');
+    ob_start(); $plugin->gift_admin->product_field(get_post($second_product->get_id())); $excluded_html = ob_get_clean();
+    $check(3 === substr_count($excluded_html, 'checked=') && 10 === substr_count($excluded_html, 'readonly='), 'Excluded components must reopen unchecked with their coordinates retained as read-only.');
+    $shared_fields = $first_layout;
+    $shared_fields['note']['x'] += 10;
+    $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => $attachment, 'voucher' => array('fields' => $shared_fields));
+    $plugin->gift_admin->save_product($second_product->get_id());
+    $check(Voucher_Pdf::layout($second_product->get_id()) == $shared_fields && Voucher_Pdf::layout($product->get_id()) === $first_layout, 'Courses sharing an attachment must still have independent coordinates.');
+    $_POST['_eva_gift_pdf_id'] = $large_attachment;
+    $_POST['voucher']['fields'] = $large_fields;
+    $plugin->gift_admin->save_product($second_product->get_id());
+    foreach (array(array('note' => array('x' => 1000)), array('sender' => 'malformed')) as $invalid_fields) {
+        $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => $large_attachment, 'voucher' => array('fields' => array_replace($large_fields, $invalid_fields)));
+        $plugin->gift_admin->save_product($second_product->get_id());
+        $check(Voucher_Pdf::layout($second_product->get_id()) == $large_fields, 'An invalid layout must preserve the previous valid layout.');
+    }
+    $_POST = array('eva_voucher_nonce' => 'invalid', '_eva_gift_pdf_id' => 0);
+    $plugin->gift_admin->save_product($second_product->get_id());
+    $check((int) get_post_meta($second_product->get_id(), '_eva_gift_pdf_id', true) === $large_attachment, 'Invalid product nonce must not change its PDF.');
+    $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => $attachment, 'voucher' => array('fields' => $large_fields));
+    $plugin->gift_admin->save_product($second_product->get_id());
+    $check((int) get_post_meta($second_product->get_id(), '_eva_gift_pdf_id', true) === $attachment && Voucher_Pdf::layout($second_product->get_id()) == $large_fields, 'Replacing a PDF must retain the selection and previous coordinates even when they no longer fit.');
+    $_POST['_eva_gift_pdf_id'] = $large_attachment;
+    $plugin->gift_admin->save_product($second_product->get_id());
+    $check(strncmp(Voucher_Pdf::render($product->get_id(), Voucher_Pdf::sample()), '%PDF-', 5) === 0, 'The original A4 course must still render independently.');
+    if ($preview_directory) {
+        wp_mkdir_p($preview_directory);
+        file_put_contents($preview_directory . '/large-voucher.pdf', $large_bytes);
+        file_put_contents($preview_directory . '/large-voucher-preview.pdf', $preview_bytes);
+    }
     wp_set_current_user($saved_user);
     $_POST = $saved_post;
     WC_Admin_Meta_Boxes::$meta_box_errors = $saved_meta_box_errors;
@@ -137,6 +276,12 @@ try {
     $input = array('eva_skip_slot' => '1', 'eva_gift_recipient' => '1', 'eva_gift_email' => 'recipient@example.test', 'eva_gift_recipient_name' => 'Giulia Èva', 'eva_gift_sender' => 'Marco & amici', 'eva_gift_note' => "Buon compleanno!\nUn’esperienza speciale.", 'eva_gift_mode' => 'scheduled', 'eva_gift_date' => $date);
     $data = Gift_Delivery::purchase_data($product->get_id(), $input);
     $check(! is_wp_error($data), 'Valid Unicode gift details must render: ' . (is_wp_error($data) ? $data->get_error_message() : ''));
+    $at_limit = Gift_Delivery::purchase_data($product->get_id(), array_merge($input, array('eva_gift_note' => str_repeat('è', 250))));
+    $check(! is_wp_error($at_limit) && 250 === mb_strlen($at_limit['note']), 'Exactly 250 Unicode characters must be allowed.');
+    $clean_note = Gift_Delivery::purchase_data($product->get_id(), array_merge($input, array('eva_gift_note' => " \r\n Auguri! \r\n \t\r\n Ti vogliamo bene. \r\n ")));
+    $check(! is_wp_error($clean_note) && "Auguri!\nTi vogliamo bene." === $clean_note['note'], 'Gift notes must remove blank lines, trim lines and normalize CRLF.');
+    $check('' === Gift_Delivery::validate_note(" \n\t\r\n ") && "Uno\nDue\nTre" === Gift_Delivery::validate_note("Uno\rDue\rTre"), 'Notes must remain optional and allow exactly two manual breaks.');
+    $check(! is_wp_error(Gift_Delivery::purchase_data($second_product->get_id(), $input)), 'Gift validation must use the second course’s own PDF and layout.');
     foreach (array('UTC', '+06:00', '+12:00', '-06:00') as $zone) {
         $today = (new DateTimeImmutable('now', new DateTimeZone($zone)))->format('Y-m-d');
         $same_day = array_merge($data, array('date' => $today, 'timezone' => $zone));
@@ -157,7 +302,7 @@ try {
     }
     $check(Gift_Delivery::due_at('2027-03-28', 'Europe/Rome') === strtotime('2027-03-28 06:00:00 UTC'), 'Summer delivery must remain 08:00 local.');
     $check(Gift_Delivery::due_at('2027-10-31', 'Europe/Rome') === strtotime('2027-10-31 07:00:00 UTC'), 'Winter delivery must remain 08:00 local.');
-    foreach (array(array('eva_gift_date' => '2027-02-30'), array('eva_gift_date' => current_datetime()->modify('yesterday')->format('Y-m-d')), array('eva_gift_sender' => ''), array('eva_gift_note' => str_repeat('x', 501)), array('eva_gift_note' => 'Buon compleanno 🎂'), array('eva_gift_sender' => array('bad'))) as $invalid) {
+    foreach (array(array('eva_gift_date' => '2027-02-30'), array('eva_gift_date' => current_datetime()->modify('yesterday')->format('Y-m-d')), array('eva_gift_sender' => ''), array('eva_gift_note' => str_repeat('x', 251)), array('eva_gift_note' => "Uno\nDue\nTre\nQuattro"), array('eva_gift_note' => 'Buon compleanno 🎂'), array('eva_gift_note' => array('bad')), array('eva_gift_sender' => array('bad'))) as $invalid) {
         $check(is_wp_error(Gift_Delivery::purchase_data($product->get_id(), array_merge($input, $invalid))), 'Invalid gift input must fail.');
     }
     $bad = $settings;
@@ -169,7 +314,7 @@ try {
     $bad = $settings;
     $bad['fields']['note']['height'] = 1;
     $overflow = false;
-    try { Voucher_Pdf::render($attachment, $data, $bad); } catch (Throwable $error) { $overflow = true; }
+    try { Voucher_Pdf::render($product->get_id(), $data, $bad['fields']); } catch (Throwable $error) { $overflow = true; }
     $check($overflow, 'Text overflow must fail rather than truncate.');
 
     WC()->session = new WC_Session_Handler();
@@ -187,20 +332,23 @@ try {
     $cart_item = new WC_Order_Item_Product();
     $plugin->woo_integration->add_order_item_meta($cart_item, 'gift-test', $cart, new WC_Order());
     $check($cart_item->get_meta('_eva_gift_data') === $data && 'awaiting_payment' === $cart_item->get_meta('_eva_gift_status'), 'Gift state must persist at checkout.');
-    $cart['eva_gift_delivery']['note'] = str_repeat('x', 501);
-    WC()->cart->cart_contents = array('gift-test' => $cart);
-    wc_clear_notices();
-    $plugin->woo_integration->validate_checkout();
-    $check(wc_notice_count('error') > 0, 'Invalid gift must fail Classic checkout.');
-    $blocked = false;
-    try { $plugin->woo_integration->validate_block_checkout(new WC_Order(), new WP_REST_Request()); } catch (Throwable $error) { $blocked = true; }
-    $check($blocked, 'Invalid gift must fail Block checkout.');
+    foreach (array(str_repeat('x', 251), "Uno\nDue\nTre\nQuattro") as $invalid_note) {
+        $cart['eva_gift_delivery']['note'] = $invalid_note;
+        WC()->cart->cart_contents = array('gift-test' => $cart);
+        wc_clear_notices();
+        $plugin->woo_integration->validate_checkout();
+        $check(wc_notice_count('error') > 0, 'Overlong or over-paragraphed gifts must fail Classic checkout.');
+        $blocked = false;
+        try { $plugin->woo_integration->validate_block_checkout(new WC_Order(), new WP_REST_Request()); } catch (Throwable $error) { $blocked = true; }
+        $check($blocked, 'Overlong or over-paragraphed gifts must fail Block checkout.');
+    }
     wc_clear_notices();
 
     ob_start();
     $plugin->frontend->render_booking_selector($product->get_id());
     $selector = ob_get_clean();
     $check(strpos($selector, 'name="eva_gift_recipient_name"') !== false && strpos($selector, 'name="eva_gift_note"') !== false && strpos($selector, 'name="eva_gift_date"') !== false, 'Product selector must contain gift controls.');
+    $check(1 === preg_match('/id="eva-gift-note"[^>]*maxlength="250"[^>]*data-max-breaks="2"/', $selector), 'The storefront must expose the same note limits as server validation.');
     $check(strpos($selector, 'name="eva_gift_mode"') !== false && strpos($selector, 'value="now"') !== false && strpos($selector, 'value="scheduled"') !== false, 'A saved PDF must expose immediate/scheduled delivery choices alongside the date picker.');
     $check(1 === preg_match('/id="eva-gift-date"[^>]* min="([^"]+)"/', $selector, $date_min) && $date_min[1] === Gift_Delivery::min_delivery_date(current_datetime()), 'Rendered date picker must use the same delivery cutoff as validation.');
 
@@ -234,6 +382,25 @@ try {
         file_put_contents($preview_directory . '/course-template.pdf', $background->Output('S'));
         file_put_contents($preview_directory . '/gift-email.html', $mails[0]['message']);
     }
+
+    update_post_meta($second_product->get_id(), Voucher_Pdf::LAYOUT_META, $excluded_fields);
+    list($large_order, $large_item) = $make_order($second_product, $data, time() + DAY_IN_SECONDS);
+    $large_order->payment_complete();
+    $mails = array();
+    $check(true === $service->send($large_order->get_id(), $large_item->get_id(), true), 'Manual delivery must use the second course layout.');
+    $probe = new \setasign\Fpdi\Tfpdf\Fpdi();
+    $check(1 === $probe->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($mails[0]['pdf_bytes'][0])), 'The second course email must have a single-page attachment.');
+    $sent_size = $probe->getTemplateSize($probe->importPage(1));
+    $check(abs($sent_size['width'] - 616.7) < 0.1 && abs($sent_size['height'] - 437.4) < 0.1, 'Actual delivery must preserve the selected course PDF size.');
+
+    $sent_content = $pdf_content($mails[0]['pdf_bytes'][0]);
+    $check(strpos($sent_content, mb_convert_encoding('Riferimento prenotazione:', 'UTF-16BE', 'UTF-8')) === false && strpos($sent_content, mb_convert_encoding('Partecipanti:', 'UTF-16BE', 'UTF-8')) === false, 'Actual email attachments must respect the product’s excluded components.');
+    update_post_meta($second_product->get_id(), Voucher_Pdf::LAYOUT_META, $large_fields);
+
+    $purchased_data = array_merge($data, array('note' => str_repeat('Auguri! ', 40) . "\nUno\nDue\nTre"));
+    list($purchased_order, $purchased_item) = $make_order($product, $purchased_data, time() + DAY_IN_SECONDS);
+    $purchased_order->payment_complete();
+    $check(true === $service->send($purchased_order->get_id(), $purchased_item->get_id(), true), 'Purchased gift messages must not be rejected by the new note limits.');
 
     list($failed_order, $failed_item) = $make_order($product, $data, time() + DAY_IN_SECONDS);
     $failed_order->payment_complete();
@@ -301,7 +468,7 @@ try {
     $check(strpos($plain, get_permalink($page_id)) !== false && strpos($plain, $data['note']) !== false && strpos($plain, 'PRIVATE BILLING ADDRESS') === false, 'Plain email must contain the booking link and note without billing information.');
 
     $invalid_pdf = false;
-    try { Voucher_Pdf::render($product->get_id(), $data); } catch (Throwable $error) { $invalid_pdf = true; }
+    try { Voucher_Pdf::render($product->get_id(), $data, null, $product->get_id()); } catch (Throwable $error) { $invalid_pdf = true; }
     $check($invalid_pdf, 'Non-PDF attachments must fail.');
     list($missing_order, $missing_item) = $make_order($product, $data, time() + DAY_IN_SECONDS);
     $missing_order->payment_complete();
@@ -342,8 +509,9 @@ try {
     $_GET = array('gift_status' => 'sent');
     ob_start(); $plugin->gift_admin->render_deliveries(); $html = ob_get_clean();
     $check(strpos($html, 'Invii regalo') !== false && strpos($html, 'recipient@example.test') !== false && strpos($html, 'eva_voucher_send') === false, 'Sent history must render without a send button.');
+    $_GET['voucher_product_id'] = $product->get_id();
     ob_start(); $plugin->gift_admin->render_settings(); $html = ob_get_clean();
-    $check(strpos($html, 'voucher[fields][note][x]') !== false && strpos($html, 'eva_voucher_preview') !== false && strpos($html, 'alerts@example.test') !== false, 'Layout, preview, and notification settings must render.');
+    $check(strpos($html, 'voucher[fields][note][x]') !== false && strpos($html, 'eva-voucher-preview') !== false && strpos($html, 'alerts@example.test') !== false, 'Layout, preview, and notification settings must render.');
     wp_set_current_user(0);
     ob_start(); $plugin->gift_admin->render_deliveries(); $html = ob_get_clean();
     $check('' === $html, 'Unauthorized users must not see gift history.');
@@ -352,14 +520,14 @@ try {
     };
     add_filter('wp_die_handler', $stop_die, PHP_INT_MAX);
     try {
-        foreach (array('preview', 'save_settings', 'send') as $method) {
+        foreach (array('preview', 'save_settings', 'save_course', 'dimensions', 'send') as $method) {
             $denied = false;
             try { $plugin->gift_admin->$method(); } catch (RuntimeException $error) { $denied = 'gift-test-access-denied' === $error->getMessage(); }
             $check($denied, 'Unauthorized ' . $method . ' must be blocked.');
         }
         wp_set_current_user($admin[0]->ID);
         $_REQUEST = array('_wpnonce' => 'invalid');
-        foreach (array('preview', 'save_settings', 'send') as $method) {
+        foreach (array('preview', 'save_settings', 'save_course', 'dimensions', 'send') as $method) {
             $denied = false;
             ob_start();
             try { $plugin->gift_admin->$method(); } catch (RuntimeException $error) { $denied = 'gift-test-access-denied' === $error->getMessage(); } finally { ob_end_clean(); }
@@ -368,7 +536,7 @@ try {
     } finally {
         remove_filter('wp_die_handler', $stop_die, PHP_INT_MAX);
     }
-    WP_CLI::success('Gift validation, PDFs, checkout, scheduling, payment, manual sends, errors, recovery, privacy, and history passed (' . ($mode ?: 'current storage') . ').');
+    WP_CLI::success('Independent product layouts, PDF dimensions, gift validation, PDFs, checkout, scheduling, payment, manual sends, errors, recovery, privacy, and history passed (' . ($mode ?: 'current storage') . ').');
 } finally {
     foreach (array_reverse($orders) as $order) { $service->cancel_order_jobs($order->get_id()); $order->delete(true); }
     foreach (array_reverse($posts) as $id) { 'attachment' === get_post_type($id) ? wp_delete_attachment($id, true) : wp_delete_post($id, true); }

@@ -86,10 +86,11 @@ class Frontend
             }
 
             // Enqueue frontend JS.
+            wp_enqueue_script('eva-gift-note', EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/gift-note.js', array(), EVA_COURSE_BOOKINGS_VERSION, true);
             wp_enqueue_script(
                 'eva-course-bookings-frontend',
                 EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/frontend.js',
-                array('jquery', 'jquery-ui-datepicker'),
+                array('jquery', 'jquery-ui-datepicker', 'eva-gift-note'),
                 EVA_COURSE_BOOKINGS_VERSION,
                 true
             );
@@ -272,7 +273,8 @@ class Frontend
                                 <label for="eva-gift-sender">Da parte di *</label>
                                 <input type="text" id="eva-gift-sender" name="eva_gift_sender" maxlength="100" placeholder="Il tuo nome o i nomi di chi fa il regalo">
                                 <label for="eva-gift-note">Messaggio regalo (facoltativo)</label>
-                                <textarea id="eva-gift-note" name="eva_gift_note" rows="4" maxlength="500" placeholder="Massimo 500 caratteri"></textarea>
+                                <textarea id="eva-gift-note" class="eva-gift-note" name="eva_gift_note" rows="4" maxlength="<?php echo esc_attr(Gift_Delivery::NOTE_MAX_LENGTH); ?>" data-max-breaks="<?php echo esc_attr(Gift_Delivery::NOTE_MAX_BREAKS); ?>" aria-describedby="eva-gift-note-help"></textarea>
+                                <p id="eva-gift-note-help">Massimo <?php echo esc_html(Gift_Delivery::NOTE_MAX_LENGTH); ?> caratteri, spazi inclusi, e <?php echo esc_html(Gift_Delivery::NOTE_MAX_BREAKS); ?> a capo manuali. Le righe vuote vengono eliminate.</p>
                                 <label for="eva-gift-mode">Quando inviare il buono *</label>
                                 <select id="eva-gift-mode" name="eva_gift_mode">
                                     <option value="now">Subito dopo il pagamento</option>
