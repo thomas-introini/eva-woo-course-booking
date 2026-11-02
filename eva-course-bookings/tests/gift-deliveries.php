@@ -155,6 +155,7 @@ try {
     unset($field);
     $large_fields['note']['y'] = 350;
     $large_fields['note']['size'] = 40;
+    $large_fields['recipient']['color'] = '#336699';
     $first_layout = Voucher_Pdf::layout($product->get_id());
     $redirect = '';
     $stop_redirect = static function ($location) use (&$redirect) {
@@ -190,9 +191,57 @@ try {
     };
     $tokens = array('recipient' => 'RECIPIENTTOKEN', 'sender' => 'SENDERTOKEN', 'note' => 'NOTETOKEN', 'reference' => 'REFTOKEN', 'quantity' => '987');
     $legacy_fields = $first_layout;
-    foreach ($legacy_fields as &$field) { unset($field['enabled']); }
+    foreach ($legacy_fields as &$field) { unset($field['enabled'], $field['color']); }
     unset($field);
     $legacy_content = $pdf_content(Voucher_Pdf::render($product->get_id(), $tokens, $legacy_fields));
+    $check(strpos($legacy_content, '0.000 g') !== false, 'Existing layouts without colors must keep black text.');
+    $colored_fields = $first_layout;
+    $colored_fields['recipient']['color'] = '#ff0000';
+    $colored_content = $pdf_content(Voucher_Pdf::render($product->get_id(), $tokens, $colored_fields));
+    foreach (array('recipient' => '1.000 0.000 0.000 rg', 'sender' => '0.000 g') as $name => $color) {
+        $pattern = '/q ' . preg_quote($color, '/') . ' BT [^\r\n]*' . preg_quote(mb_convert_encoding($tokens[$name], 'UTF-16BE', 'UTF-8'), '/') . '/';
+        $check(1 === preg_match($pattern, $colored_content), 'Each field must use its own color without inheriting the previous field color.');
+    }
+    foreach (array('red', '#12345', '#1234567', array('#112233')) as $color) {
+        $invalid_color = $settings;
+        $invalid_color['fields']['recipient']['color'] = $color;
+        $check(is_wp_error(Voucher_Pdf::validate_settings($invalid_color)), 'Malformed text colors must be rejected.');
+    }
+    $font_size = static function ($bytes) use ($pdf_content) {
+        preg_match_all('/\/F\d+ ([\d.]+) Tf/', strstr($pdf_content($bytes), ' Tj', true), $sizes);
+        return (float) end($sizes[1]);
+    };
+    $minimum_layout = $settings;
+    $minimum_layout['fields']['note']['size'] = 7;
+    $check(! is_wp_error(Voucher_Pdf::validate_settings($minimum_layout)), 'A configured maximum of 7 pt must be accepted.');
+    $minimum_layout['fields']['note']['size'] = 6.9;
+    $check(is_wp_error(Voucher_Pdf::validate_settings($minimum_layout)), 'Font sizes below 7 pt must be rejected.');
+    $long_fields = $first_layout;
+    foreach ($long_fields as &$field) { $field['enabled'] = false; }
+    unset($field);
+    $long_fields['recipient'] = array_replace($long_fields['recipient'], array('enabled' => true, 'x' => 13, 'y' => 85, 'width' => 107, 'height' => 10, 'size' => 18));
+    $long_name = Voucher_Pdf::render($product->get_id(), array('recipient' => str_repeat('W', 100)), $long_fields);
+    $check($font_size($long_name) >= 7 && $font_size($long_name) < 9 && substr_count($pdf_content($long_name), "\0W") === 100, 'Long names must shrink below 9 pt without losing any characters.');
+    $long_fields['recipient']['enabled'] = false;
+    $long_fields['note'] = array_replace($long_fields['note'], array('enabled' => true, 'x' => 13, 'y' => 70, 'width' => 107, 'height' => 20, 'size' => 18));
+    $long_note = Voucher_Pdf::render($product->get_id(), array('note' => str_repeat('W', 250)), $long_fields);
+    $check($font_size($long_note) >= 7 && $font_size($long_note) < 9 && substr_count($pdf_content($long_note), "\0W") === 250, 'A 250-character unbroken message must fit without truncation.');
+    $spaced_note = Voucher_Pdf::render($product->get_id(), array('note' => str_repeat('Tanti auguri! ', 19)), $long_fields);
+    $check($font_size($spaced_note) >= 7 && $font_size($spaced_note) < 18 && substr_count($pdf_content($spaced_note), mb_convert_encoding('auguri!', 'UTF-16BE', 'UTF-8')) === 19, 'Long sentences must wrap at spaces and retain every word.');
+    $paragraphs = "Primo paragrafo\nSecondo paragrafo\nTerzo paragrafo";
+    $long_fields['note']['size'] = 14;
+    $paragraph_content = $pdf_content(Voucher_Pdf::render($product->get_id(), array('note' => $paragraphs), $long_fields));
+    $check(substr_count($paragraph_content, ' Tj') === 3, 'Manual line breaks must be retained.');
+    foreach (explode("\n", $paragraphs) as $paragraph) {
+        $check(strpos($paragraph_content, mb_convert_encoding($paragraph, 'UTF-16BE', 'UTF-8')) !== false, 'Each manual paragraph must remain complete.');
+    }
+    $short_note = Voucher_Pdf::render($product->get_id(), array('note' => 'Auguri!'), $long_fields);
+    $check($font_size($short_note) === 14.0, 'Short text must retain the configured maximum font size.');
+    $long_fields['note']['height'] = 3.3;
+    $long_fields['note']['size'] = 48;
+    $minimum_note = Voucher_Pdf::render($product->get_id(), array('note' => 'Auguri!'), $long_fields);
+    $check($font_size($minimum_note) >= 7 && $font_size($minimum_note) <= 7.2, 'The readable minimum must be tested even when starting from 48 pt.');
+    $check(Voucher_Pdf::layout($product->get_id()) === $first_layout, 'Automatic font fitting must not change the saved course layout.');
     foreach ($tokens as $name => $token) {
         $check(strpos($legacy_content, mb_convert_encoding($token, 'UTF-16BE', 'UTF-8')) !== false, 'Existing layouts without visibility flags must still render ' . $name . '.');
         $excluded = $first_layout;
@@ -222,8 +271,10 @@ try {
     $check(is_wp_error(Voucher_Pdf::validate_settings($invalid_flag)), 'Malformed visibility flags must be rejected.');
     $preview_fields = $large_fields;
     $preview_fields['note']['x'] += 40;
+    $preview_fields['recipient']['color'] = '#ff0000';
     $preview_bytes = Voucher_Pdf::render($second_product->get_id(), Voucher_Pdf::sample(), $preview_fields, $large_attachment);
     $check($preview_bytes !== $large_bytes && Voucher_Pdf::layout($second_product->get_id()) == $large_fields, 'Unsaved preview coordinates must affect output without persisting.');
+    $check(strpos($pdf_content($preview_bytes), '1.000 0.000 0.000 rg') !== false, 'Preview must use unsaved text colors.');
     foreach (array('settings', 'product') as $screen) {
         $_GET = array('voucher_product_id' => $second_product->get_id());
         ob_start();
@@ -231,6 +282,7 @@ try {
         $editor_html = ob_get_clean();
         $check(strpos($editor_html, '616.7') !== false && strpos($editor_html, 'voucher[fields][note][x]') !== false && strpos($editor_html, 'value="350"') !== false, 'Both editors must load the same course layout and PDF dimensions.');
         $check(5 === substr_count($editor_html, 'class="eva-voucher-field-enabled"') && strpos($editor_html, 'voucher[fields][reference][enabled]') !== false, 'Both screens must expose a visibility checkbox for every component.');
+        $check(5 === substr_count($editor_html, 'class="eva-voucher-color"') && strpos($editor_html, 'value="#336699"') !== false, 'Both screens must expose a color picker for every component and load saved colors.');
         $check(strpos($editor_html, 'name="voucher[width]"') === false, 'Page size must not be manually editable.');
         if ('product' === $screen) { $check(strpos($editor_html, '<form') === false, 'The product editor must not introduce a nested form.'); }
     }
@@ -394,6 +446,7 @@ try {
     $check(abs($sent_size['width'] - 616.7) < 0.1 && abs($sent_size['height'] - 437.4) < 0.1, 'Actual delivery must preserve the selected course PDF size.');
 
     $sent_content = $pdf_content($mails[0]['pdf_bytes'][0]);
+    $check(strpos($sent_content, '0.200 0.400 0.600 rg') !== false, 'Actual email attachments must use the saved course text colors.');
     $check(strpos($sent_content, mb_convert_encoding('Riferimento prenotazione:', 'UTF-16BE', 'UTF-8')) === false && strpos($sent_content, mb_convert_encoding('Partecipanti:', 'UTF-16BE', 'UTF-8')) === false, 'Actual email attachments must respect the product’s excluded components.');
     update_post_meta($second_product->get_id(), Voucher_Pdf::LAYOUT_META, $large_fields);
 

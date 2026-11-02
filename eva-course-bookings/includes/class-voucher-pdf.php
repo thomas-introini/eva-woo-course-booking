@@ -8,6 +8,7 @@ class Voucher_Pdf
 {
     const OPTION = 'eva_course_vouchers';
     const LAYOUT_META = '_eva_gift_pdf_layout';
+    const MIN_FONT_SIZE = 7;
 
     public static function defaults()
     {
@@ -15,11 +16,11 @@ class Voucher_Pdf
             'error_email' => 'info@evacaffe.it',
             'width' => 297, 'height' => 210,
             'fields' => array(
-                'recipient' => array('enabled' => true, 'x' => 20, 'y' => 85, 'width' => 257, 'height' => 12, 'size' => 18, 'align' => 'C'),
-                'sender' => array('enabled' => true, 'x' => 20, 'y' => 105, 'width' => 257, 'height' => 10, 'size' => 14, 'align' => 'C'),
-                'note' => array('enabled' => true, 'x' => 25, 'y' => 125, 'width' => 247, 'height' => 45, 'size' => 12, 'align' => 'L'),
-                'reference' => array('enabled' => true, 'x' => 20, 'y' => 185, 'width' => 190, 'height' => 8, 'size' => 10, 'align' => 'L'),
-                'quantity' => array('enabled' => true, 'x' => 220, 'y' => 185, 'width' => 57, 'height' => 8, 'size' => 10, 'align' => 'R'),
+                'recipient' => array('enabled' => true, 'x' => 20, 'y' => 85, 'width' => 257, 'height' => 12, 'size' => 18, 'align' => 'C', 'color' => '#000000'),
+                'sender' => array('enabled' => true, 'x' => 20, 'y' => 105, 'width' => 257, 'height' => 10, 'size' => 14, 'align' => 'C', 'color' => '#000000'),
+                'note' => array('enabled' => true, 'x' => 25, 'y' => 125, 'width' => 247, 'height' => 45, 'size' => 12, 'align' => 'L', 'color' => '#000000'),
+                'reference' => array('enabled' => true, 'x' => 20, 'y' => 185, 'width' => 190, 'height' => 8, 'size' => 10, 'align' => 'L', 'color' => '#000000'),
+                'quantity' => array('enabled' => true, 'x' => 220, 'y' => 185, 'width' => 57, 'height' => 8, 'size' => 10, 'align' => 'R', 'color' => '#000000'),
             ),
         );
     }
@@ -86,13 +87,18 @@ class Voucher_Pdf
                 return new \WP_Error('layout', 'Allineamento del campo non valido.');
             }
             $field['align'] = $values['align'];
+            $color = $values['color'] ?? '#000000';
+            if (! is_string($color) || ! preg_match('/^#[a-fA-F0-9]{6}$/D', $color)) {
+                return new \WP_Error('layout', 'Colore del testo non valido: usa il formato #RRGGBB.');
+            }
+            $field['color'] = $color;
             if (! $field['enabled']) {
                 continue;
             }
             if ($field['x'] < 0 || $field['y'] < 0 || $field['width'] <= 2 || $field['height'] <= 0 ||
                 $field['x'] + $field['width'] > $settings['width'] || $field['y'] + $field['height'] > $settings['height'] ||
-                $field['size'] < 9 || $field['size'] > 48) {
-                return new \WP_Error('layout', 'I campi devono rientrare nella pagina; carattere tra 9 e 48 pt.');
+                $field['size'] < self::MIN_FONT_SIZE || $field['size'] > 48) {
+                return new \WP_Error('layout', sprintf('I campi devono rientrare nella pagina; carattere tra %d e 48 pt.', self::MIN_FONT_SIZE));
             }
         }
         return $settings;
@@ -190,17 +196,31 @@ class Voucher_Pdf
             if (! $pdf->supports($value)) {
                 throw new \RuntimeException('Il campo ' . $key . ' contiene caratteri non supportati dal font del voucher. Rimuovi emoji o simboli non supportati.');
             }
-            for ($size = $field['size']; ; $size = max(9, $size - 0.5)) {
+            $lower = self::MIN_FONT_SIZE;
+            $upper = $field['size'];
+            $size = $upper;
+            $fit = null;
+            while (true) {
                 $pdf->SetFontSize($size);
                 $lines = self::wrap($pdf, $value, $field['width'] - 2);
                 $line_height = $size * 25.4 / 72 * 1.3;
                 if (count($lines) * $line_height <= $field['height'] && max(array_map(array($pdf, 'GetStringWidth'), $lines)) <= $field['width'] - 2) {
+                    $fit = array($size, $lines, $line_height);
+                    $lower = $size;
+                } else {
+                    if ($size <= self::MIN_FONT_SIZE) {
+                        throw new \RuntimeException('Il campo ' . $key . ' non entra nel voucher. Riduci il testo o amplia il campo nel layout.');
+                    }
+                    $upper = $size;
+                }
+                if ($fit && $upper - $lower <= 0.1) {
                     break;
                 }
-                if ($size <= 9) {
-                    throw new \RuntimeException('Il campo ' . $key . ' non entra nel voucher. Riduci il testo o amplia il campo nel layout.');
-                }
+                $size = $fit ? ($lower + $upper) / 2 : $lower;
             }
+            list($size, $lines, $line_height) = $fit;
+            $pdf->SetFontSize($size);
+            $pdf->SetTextColor(...sscanf($field['color'], '#%02x%02x%02x'));
             foreach ($lines as $index => $line) {
                 $pdf->SetXY($field['x'], $field['y'] + $index * $line_height);
                 $pdf->Cell($field['width'], $line_height, $line, 0, 0, $field['align']);

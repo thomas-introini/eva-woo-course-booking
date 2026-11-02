@@ -155,7 +155,9 @@ Default page size: **A4 landscape, 297 × 210 mm**. Reserve these areas, measure
 | Booking reference | 20 | 185 | 190 | 8 | 10 |
 | Participants | 220 | 185 | 57 | 8 | 10 |
 
-Each course can use a different page size and layout, even when sharing a PDF attachment. Use the **Stampa** checkbox beside each field to include or exclude recipient, sender, message, booking reference, or participants in that course’s PDF. Existing layouts keep all fields enabled. Exclusion affects the text added by the plugin; text already present in the PDF artwork remains. Coordinates are retained when a field is excluded. Positions, box sizes, font sizes, and alignment are editable per course; page dimensions are detected from the PDF and cannot be overridden. Existing global coordinates remain the initial values for courses without a saved layout. Changing one course does not change another. Replacing a PDF retains the coordinates, so check them against the new artwork; fields are never automatically scaled. Recipient, sender and message use the bundled **Yrsa** serif font (SIL Open Font License). Booking details use DejaVu Sans; it also preserves character support when a personal field contains glyphs absent from Yrsa. Text wraps and shrinks to a minimum of 9 pt. Text that still cannot fit, or characters absent from the bundled font (including many emoji), are rejected before checkout. Template/layout changes apply to unsent gifts and retries; preview real gift details from the delivery list after changing a layout. Previews always use the **current** artwork/layout, including for an already sent gift.
+Each course can use a different page size and layout, even when sharing a PDF attachment. Use the **Stampa** checkbox beside each field to include or exclude recipient, sender, message, booking reference, or participants in that course’s PDF. Existing layouts keep all fields enabled. Exclusion affects the text added by the plugin; text already present in the PDF artwork remains. Coordinates are retained when a field is excluded. Positions, box sizes, font sizes, and alignment are editable per course; page dimensions are detected from the PDF and cannot be overridden. Existing global coordinates remain the initial values for courses without a saved layout. Changing one course does not change another. Replacing a PDF retains the coordinates, so check them against the new artwork; fields are never automatically scaled. Recipient, sender and message use the bundled **Yrsa** serif font (SIL Open Font License). Booking details use DejaVu Sans; it also preserves character support when a personal field contains glyphs absent from Yrsa. The configured font size is a maximum: text wraps and automatically uses the largest size that fits the box, down to 7 pt, with 0.1 pt precision. Manual line breaks are retained and messages are never truncated. Text that still cannot fit, or characters absent from the bundled font (including many emoji), are rejected before checkout. Template/layout changes apply to unsent gifts and retries; preview real gift details from the delivery list after changing a layout. Previews always use the **current** artwork/layout, including for an already sent gift.
+
+Use the **Colore** picker beside each field to choose its text color (`#RRGGBB`). Colors are saved per course and apply to previews and delivered PDFs. Existing layouts keep black text until a color is chosen.
 
 #### Review and send gifts
 
@@ -413,6 +415,14 @@ The plugin supports both classic checkout and WooCommerce's new Block Checkout:
 For compatibility with caching plugins, slots are loaded via AJAX on the frontend.
 
 ## Changelog
+
+### 1.4.13
+
+- Fit long voucher text at the largest font size that fits each box, down to 7 pt, without truncation
+
+### 1.4.12
+
+- Choose each voucher field's text color with the WordPress color picker, applied to previews and delivered PDFs
 
 ### 1.4.11
 

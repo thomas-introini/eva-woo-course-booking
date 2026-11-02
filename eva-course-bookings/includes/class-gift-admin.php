@@ -25,8 +25,9 @@ class Gift_Admin
     {
         if (strpos($hook, 'eva-course-bookings') !== false || ('product' === get_post_type() && in_array($hook, array('post.php', 'post-new.php'), true))) {
             wp_enqueue_media();
+            wp_enqueue_style('wp-color-picker');
             wp_enqueue_script('eva-gift-note', EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/gift-note.js', array(), EVA_COURSE_BOOKINGS_VERSION, true);
-            wp_enqueue_script('eva-gift-admin', EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/gift-admin.js', array('jquery', 'eva-gift-note'), EVA_COURSE_BOOKINGS_VERSION, true);
+            wp_enqueue_script('eva-gift-admin', EVA_COURSE_BOOKINGS_PLUGIN_URL . 'assets/js/gift-admin.js', array('jquery', 'eva-gift-note', 'wp-color-picker'), EVA_COURSE_BOOKINGS_VERSION, true);
         }
     }
 
@@ -266,17 +267,19 @@ class Gift_Admin
             <p>Dimensioni pagina: <strong class="eva-voucher-dimensions" role="status"><?php echo esc_html($dimensions); ?></strong></p>
             <p class="description">PDF di una pagina, non protetto e senza campi modulo, preferibilmente PDF 1.4. Un PDF abilita gli invii regalo nei corsi che consentono l’acquisto senza data. Ogni campo deve rientrare nella pagina; le coordinate partono dall’angolo superiore sinistro.</p>
             <p>Seleziona nella colonna <strong>Stampa</strong> i testi da aggiungere al PDF per questo corso. I testi già presenti nel modello PDF rimangono visibili.</p>
-            <div style="overflow-x:auto"><table class="widefat striped"><thead><tr><th>Campo</th><th>Stampa</th><th>X</th><th>Y</th><th>Larghezza</th><th>Altezza</th><th>Carattere (pt)</th><th>Allineamento</th></tr></thead><tbody>
+            <p>Il carattere impostato è la dimensione massima. Il testo si adatta automaticamente al riquadro fino a <?php echo esc_html(Voucher_Pdf::MIN_FONT_SIZE); ?> pt.</p>
+            <div style="overflow-x:auto"><table class="widefat striped"><thead><tr><th>Campo</th><th>Stampa</th><th>X</th><th>Y</th><th>Larghezza</th><th>Altezza</th><th>Carattere max (pt)</th><th>Allineamento</th><th>Colore</th></tr></thead><tbody>
                 <?php foreach ($labels as $name => $label) : $field = $fields[$name] ?? Voucher_Pdf::defaults()['fields'][$name]; ?>
                     <tr><th scope="row"><?php echo esc_html($label); ?></th>
                     <td><input type="hidden" name="voucher[fields][<?php echo esc_attr($name); ?>][enabled]" value="0">
                         <input type="checkbox" class="eva-voucher-field-enabled" aria-label="<?php echo esc_attr('Stampa ' . $label); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][enabled]" value="1" <?php checked($field['enabled'] ?? true); ?>></td>
                     <?php foreach (array('x', 'y', 'width', 'height', 'size') as $key) : ?>
-                        <td><input aria-label="<?php echo esc_attr($label . ' ' . $key); ?>" type="number" <?php wp_readonly(! ($field['enabled'] ?? true)); ?> required step="any" min="<?php echo 'size' === $key ? '9' : '0'; ?>" <?php if ('size' === $key) { echo 'max="48"'; } ?> name="voucher[fields][<?php echo esc_attr($name); ?>][<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr($field[$key]); ?>" style="width:80px"></td>
+                        <td><input aria-label="<?php echo esc_attr($label . ' ' . $key); ?>" type="number" <?php wp_readonly(! ($field['enabled'] ?? true)); ?> required step="any" min="<?php echo 'size' === $key ? Voucher_Pdf::MIN_FONT_SIZE : '0'; ?>" <?php if ('size' === $key) { echo 'max="48"'; } ?> name="voucher[fields][<?php echo esc_attr($name); ?>][<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr($field[$key]); ?>" style="width:80px"></td>
                     <?php endforeach; ?>
                     <td><select aria-label="<?php echo esc_attr($label . ' allineamento'); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][align]">
                         <?php foreach (array('L' => 'Sinistra', 'C' => 'Centro', 'R' => 'Destra') as $value => $text) : ?><option value="<?php echo esc_attr($value); ?>" <?php selected($field['align'], $value); ?>><?php echo esc_html($text); ?></option><?php endforeach; ?>
-                    </select></td></tr>
+                    </select></td>
+                    <td><input type="text" class="eva-voucher-color" aria-label="<?php echo esc_attr('Colore ' . $label); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][color]" value="<?php echo esc_attr($field['color'] ?? '#000000'); ?>" data-default-color="#000000"></td></tr>
                 <?php endforeach; ?>
             </tbody></table></div>
             <h3>Anteprima con il layout attuale, anche prima del salvataggio</h3>

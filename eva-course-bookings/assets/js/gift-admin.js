@@ -6,6 +6,7 @@
   var selectedCourse = selector.find('select').val();
   var dimensionRequest;
 
+  editor.find('.eva-voucher-color').wpColorPicker({ change: function () { dirty = true; } });
   editor.on('input change', ':input', function () { dirty = true; });
   $('.eva-voucher-field-enabled').on('change', function () {
     $(this).closest('tr').find('input[type="number"]').prop('readOnly', !this.checked);
