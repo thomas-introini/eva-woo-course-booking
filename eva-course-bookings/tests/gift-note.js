@@ -7,7 +7,7 @@ vm.runInNewContext(fs.readFileSync(__dirname + '/../assets/js/gift-note.js', 'ut
   document: { addEventListener: (name, handler) => { handlers[name] = handler; } }
 });
 const note = {
-  value: '', maxLength: 250, dataset: { maxBreaks: '2' }, message: '',
+  value: '', maxLength: 150, dataset: { maxBreaks: '2' }, message: '',
   matches: selector => selector === '.eva-gift-note',
   setCustomValidity(message) { this.message = message; }
 };
@@ -15,10 +15,10 @@ function input(value) {
   note.value = value;
   handlers.input({ target: note });
 }
-input('è'.repeat(250));
+input('è'.repeat(150));
 assert.equal(note.message, '');
-input('è'.repeat(251));
-assert.match(note.message, /250/);
+input('è'.repeat(151));
+assert.match(note.message, /150/);
 input('Uno\nDue\nTre');
 assert.equal(note.message, '');
 input('Uno\nDue\nTre\nQuattro');
@@ -29,9 +29,9 @@ input(' \r\n Auguri! \r\n \t\r\n Ti vogliamo bene. \r\n ');
 handlers.focusout({ target: note });
 assert.equal(note.value, 'Auguri!\nTi vogliamo bene.');
 assert.equal(note.message, '');
-input('a'.repeat(251));
+input('a'.repeat(151));
 handlers.focusout({ target: note });
-assert.equal(note.value.length, 251, 'Messages must never be silently truncated.');
+assert.equal(note.value.length, 151, 'Messages must never be silently truncated.');
 assert.notEqual(note.message, '');
 input('');
 assert.equal(note.message, '', 'Clearing a note must clear its validation error.');

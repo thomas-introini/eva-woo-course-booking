@@ -568,13 +568,15 @@ class Admin
         // Get count of pending bookings for badge.
         $pending_count = $this->get_pending_bookings_count();
         $pending_badge = $pending_count > 0 ? ' <span class="eva-pending-badge">' . $pending_count . '</span>' : '';
+        $gift_count = $this->get_pending_gift_deliveries_count();
+        $gift_badge = $gift_count > 0 ? ' <span class="eva-pending-badge">' . $gift_count . '</span>' : '';
 
         $tabs = array(
             'calendario'    => 'Calendario',
             'prenotazioni'  => 'Prenotazioni',
             'da_prenotare'  => 'Da prenotare' . $pending_badge,
             'corsi'         => 'Corsi abilitati',
-            'invii_regalo'  => 'Invii regalo',
+            'invii_regalo'  => 'Invii regalo' . $gift_badge,
             'impostazioni'  => 'Impostazioni',
         );
 
@@ -1426,6 +1428,16 @@ class Admin
             </form>
         </div>
     <?php
+    }
+
+    private function get_pending_gift_deliveries_count()
+    {
+        global $wpdb;
+
+        return (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}woocommerce_order_itemmeta
+             WHERE meta_key = '_eva_gift_status' AND meta_value = 'scheduled'"
+        );
     }
 
     /**

@@ -19,6 +19,8 @@ $orders = array();
 $mails = array();
 $fail_recipient = '';
 $fail_alert = false;
+$header_logo = static function () { return 'https://example.test/eva-email-logo.png'; };
+$preview_logo = static function () { return 'https://example.test/eva-preview-logo.png'; };
 $temporary_files = array();
 $saved_post = $_POST;
 $saved_get = $_GET;
@@ -47,6 +49,16 @@ $capture = static function ($result, $mail) use (&$mails, &$fail_recipient, &$fa
 add_filter('pre_wp_mail', $capture, PHP_INT_MAX, 2);
 $plugin = Plugin::get_instance();
 $service = $plugin->gift_delivery;
+$gift_badge_count = static function () use ($plugin) {
+    $saved_filters = $_GET;
+    $_GET = array('tab' => 'invii_regalo', 'gift_status' => 'sent');
+    ob_start();
+    $plugin->admin->render_main_page();
+    $html = ob_get_clean();
+    $_GET = $saved_filters;
+    preg_match('/Invii regalo(?: <span class="eva-pending-badge">(\d+)<\/span>)?/', $html, $badge);
+    return (int) ($badge[1] ?? 0);
+};
 $fresh = static function ($item) { $item->read_meta_data(true); return $item; };
 $make_order = static function ($product, $data, $due, $gift = true) use (&$orders) {
     $order = new WC_Order();
@@ -225,7 +237,7 @@ try {
     $long_fields['recipient']['enabled'] = false;
     $long_fields['note'] = array_replace($long_fields['note'], array('enabled' => true, 'x' => 13, 'y' => 70, 'width' => 107, 'height' => 20, 'size' => 18));
     $long_note = Voucher_Pdf::render($product->get_id(), array('note' => str_repeat('W', 250)), $long_fields);
-    $check($font_size($long_note) >= 7 && $font_size($long_note) < 9 && substr_count($pdf_content($long_note), "\0W") === 250, 'A 250-character unbroken message must fit without truncation.');
+    $check($font_size($long_note) >= 7 && $font_size($long_note) < 9 && substr_count($pdf_content($long_note), "\0W") === 250, 'An existing 250-character unbroken message must fit without truncation.');
     $spaced_note = Voucher_Pdf::render($product->get_id(), array('note' => str_repeat('Tanti auguri! ', 19)), $long_fields);
     $check($font_size($spaced_note) >= 7 && $font_size($spaced_note) < 18 && substr_count($pdf_content($spaced_note), mb_convert_encoding('auguri!', 'UTF-16BE', 'UTF-8')) === 19, 'Long sentences must wrap at spaces and retain every word.');
     $paragraphs = "Primo paragrafo\nSecondo paragrafo\nTerzo paragrafo";
@@ -280,6 +292,7 @@ try {
         ob_start();
         'settings' === $screen ? $plugin->gift_admin->render_settings() : $plugin->gift_admin->product_field(get_post($second_product->get_id()));
         $editor_html = ob_get_clean();
+        $check(1 === preg_match('/name="sample\[note\]"[^>]*maxlength="150"[^>]*data-max-breaks="2"/', $editor_html), 'Both editors must expose the new sample note limits.');
         $check(strpos($editor_html, '616.7') !== false && strpos($editor_html, 'voucher[fields][note][x]') !== false && strpos($editor_html, 'value="350"') !== false, 'Both editors must load the same course layout and PDF dimensions.');
         $check(5 === substr_count($editor_html, 'class="eva-voucher-field-enabled"') && strpos($editor_html, 'voucher[fields][reference][enabled]') !== false, 'Both screens must expose a visibility checkbox for every component.');
         $check(5 === substr_count($editor_html, 'class="eva-voucher-color"') && strpos($editor_html, 'value="#336699"') !== false, 'Both screens must expose a color picker for every component and load saved colors.');
@@ -328,8 +341,8 @@ try {
     $input = array('eva_skip_slot' => '1', 'eva_gift_recipient' => '1', 'eva_gift_email' => 'recipient@example.test', 'eva_gift_recipient_name' => 'Giulia Èva', 'eva_gift_sender' => 'Marco & amici', 'eva_gift_note' => "Buon compleanno!\nUn’esperienza speciale.", 'eva_gift_mode' => 'scheduled', 'eva_gift_date' => $date);
     $data = Gift_Delivery::purchase_data($product->get_id(), $input);
     $check(! is_wp_error($data), 'Valid Unicode gift details must render: ' . (is_wp_error($data) ? $data->get_error_message() : ''));
-    $at_limit = Gift_Delivery::purchase_data($product->get_id(), array_merge($input, array('eva_gift_note' => str_repeat('è', 250))));
-    $check(! is_wp_error($at_limit) && 250 === mb_strlen($at_limit['note']), 'Exactly 250 Unicode characters must be allowed.');
+    $at_limit = Gift_Delivery::purchase_data($product->get_id(), array_merge($input, array('eva_gift_note' => str_repeat('è', 150))));
+    $check(! is_wp_error($at_limit) && 150 === mb_strlen($at_limit['note']), 'Exactly 150 Unicode characters must be allowed.');
     $clean_note = Gift_Delivery::purchase_data($product->get_id(), array_merge($input, array('eva_gift_note' => " \r\n Auguri! \r\n \t\r\n Ti vogliamo bene. \r\n ")));
     $check(! is_wp_error($clean_note) && "Auguri!\nTi vogliamo bene." === $clean_note['note'], 'Gift notes must remove blank lines, trim lines and normalize CRLF.');
     $check('' === Gift_Delivery::validate_note(" \n\t\r\n ") && "Uno\nDue\nTre" === Gift_Delivery::validate_note("Uno\rDue\rTre"), 'Notes must remain optional and allow exactly two manual breaks.');
@@ -354,7 +367,7 @@ try {
     }
     $check(Gift_Delivery::due_at('2027-03-28', 'Europe/Rome') === strtotime('2027-03-28 06:00:00 UTC'), 'Summer delivery must remain 08:00 local.');
     $check(Gift_Delivery::due_at('2027-10-31', 'Europe/Rome') === strtotime('2027-10-31 07:00:00 UTC'), 'Winter delivery must remain 08:00 local.');
-    foreach (array(array('eva_gift_date' => '2027-02-30'), array('eva_gift_date' => current_datetime()->modify('yesterday')->format('Y-m-d')), array('eva_gift_sender' => ''), array('eva_gift_note' => str_repeat('x', 251)), array('eva_gift_note' => "Uno\nDue\nTre\nQuattro"), array('eva_gift_note' => 'Buon compleanno 🎂'), array('eva_gift_note' => array('bad')), array('eva_gift_sender' => array('bad'))) as $invalid) {
+    foreach (array(array('eva_gift_date' => '2027-02-30'), array('eva_gift_date' => current_datetime()->modify('yesterday')->format('Y-m-d')), array('eva_gift_sender' => ''), array('eva_gift_note' => str_repeat('x', 151)), array('eva_gift_note' => "Uno\nDue\nTre\nQuattro"), array('eva_gift_note' => 'Buon compleanno 🎂'), array('eva_gift_note' => array('bad')), array('eva_gift_sender' => array('bad'))) as $invalid) {
         $check(is_wp_error(Gift_Delivery::purchase_data($product->get_id(), array_merge($input, $invalid))), 'Invalid gift input must fail.');
     }
     $bad = $settings;
@@ -384,7 +397,7 @@ try {
     $cart_item = new WC_Order_Item_Product();
     $plugin->woo_integration->add_order_item_meta($cart_item, 'gift-test', $cart, new WC_Order());
     $check($cart_item->get_meta('_eva_gift_data') === $data && 'awaiting_payment' === $cart_item->get_meta('_eva_gift_status'), 'Gift state must persist at checkout.');
-    foreach (array(str_repeat('x', 251), "Uno\nDue\nTre\nQuattro") as $invalid_note) {
+    foreach (array(str_repeat('x', 151), "Uno\nDue\nTre\nQuattro") as $invalid_note) {
         $cart['eva_gift_delivery']['note'] = $invalid_note;
         WC()->cart->cart_contents = array('gift-test' => $cart);
         wc_clear_notices();
@@ -400,16 +413,19 @@ try {
     $plugin->frontend->render_booking_selector($product->get_id());
     $selector = ob_get_clean();
     $check(strpos($selector, 'name="eva_gift_recipient_name"') !== false && strpos($selector, 'name="eva_gift_note"') !== false && strpos($selector, 'name="eva_gift_date"') !== false, 'Product selector must contain gift controls.');
-    $check(1 === preg_match('/id="eva-gift-note"[^>]*maxlength="250"[^>]*data-max-breaks="2"/', $selector), 'The storefront must expose the same note limits as server validation.');
+    $check(1 === preg_match('/id="eva-gift-note"[^>]*maxlength="150"[^>]*data-max-breaks="2"/', $selector), 'The storefront must expose the same note limits as server validation.');
     $check(strpos($selector, 'name="eva_gift_mode"') !== false && strpos($selector, 'value="now"') !== false && strpos($selector, 'value="scheduled"') !== false, 'A saved PDF must expose immediate/scheduled delivery choices alongside the date picker.');
     $check(1 === preg_match('/id="eva-gift-date"[^>]* min="([^"]+)"/', $selector, $date_min) && $date_min[1] === Gift_Delivery::min_delivery_date(current_datetime()), 'Rendered date picker must use the same delivery cutoff as validation.');
 
+    $pending_gifts = $gift_badge_count();
     list($order, $item) = $make_order($product, $data, Gift_Delivery::due_at($date, $data['timezone']));
     $service->sync_order($order->get_id());
     $check(! as_has_scheduled_action(Gift_Delivery::HOOK, array($order->get_id(), $item->get_id()), Gift_Delivery::GROUP), 'Unpaid gifts must not queue.');
+    $check($pending_gifts === $gift_badge_count(), 'The gift badge must exclude unpaid gifts.');
     $order->payment_complete();
     $fresh($item);
     $check('scheduled' === $item->get_meta('_eva_gift_status'), 'Paid Processing gifts must become scheduled.');
+    $check($pending_gifts + 1 === $gift_badge_count(), 'The gift tab badge must count scheduled sends independently of delivery filters.');
     $action_id = as_next_scheduled_action(Gift_Delivery::HOOK, array($order->get_id(), $item->get_id()), Gift_Delivery::GROUP);
     $check((int) $action_id === (int) $item->get_meta('_eva_gift_due'), 'Requested delivery time must be scheduled exactly.');
     $service->sync_order($order->get_id());
@@ -418,12 +434,29 @@ try {
     $check(is_wp_error($service->send($order->get_id(), $item->get_id())), 'Cron must not send before the requested date.');
     $email = WC()->mailer()->get_emails()['WC_Email_Course_Gift'];
     $email->enabled = 'yes';
+    add_filter('pre_option_woocommerce_email_header_image', $header_logo);
+    if (class_exists(\Automattic\WooCommerce\Internal\Admin\EmailPreview\EmailPreview::class)) {
+        add_filter('pre_transient_woocommerce_email_header_image', $preview_logo);
+        $preview = wc_get_container()->get(\Automattic\WooCommerce\Internal\Admin\EmailPreview\EmailPreview::class);
+        $preview->set_email_type(get_class($email));
+        $preview_html = $preview->render();
+        $check(strpos($preview_html, 'Giulia Rossi') !== false && strpos($preview_html, 'Corso di caffè') !== false, 'WooCommerce gift previews must render sample gift details.');
+        $check(strpos($preview_html, $preview_logo()) !== false, 'Gift previews must use the live WooCommerce logo setting.');
+        $check(strpos($preview->get_subject(), 'Corso di caffè') !== false, 'Gift preview subjects must populate the course placeholder.');
+        $check(strpos($email->get_content_plain(), 'Giulia Rossi') !== false && array() === $email->get_attachments(), 'Plain previews must contain sample details without a voucher attachment.');
+        $other_email = WC()->mailer()->get_emails()['WC_Email_Customer_Completed_Order'];
+        $check($email->prepare_preview($other_email) === $other_email, 'Gift preview setup must leave other emails unchanged.');
+        remove_filter('pre_transient_woocommerce_email_header_image', $preview_logo);
+    }
     $mails = array();
     $check(true === $service->send($order->get_id(), $item->get_id(), true), 'Admin must be able to send future gifts.');
     $fresh($item);
     $check('sent' === $item->get_meta('_eva_gift_status') && $item->get_meta('_eva_gift_sent_at') > 0, 'Successful send must record timestamp.');
+    $check($pending_gifts === $gift_badge_count(), 'Successfully sent gifts must leave the pending badge.');
     $check(1 === count($mails) && in_array('recipient@example.test', (array) $mails[0]['to'], true), 'Gift email must go only to its recipient.');
     $check(strpos($mails[0]['message'], 'PRIVATE BILLING ADDRESS') === false && strpos($mails[0]['message'], 'Marco &amp; amici') !== false, 'Gift email must show the sender and protect billing details.');
+    $check(strpos($mails[0]['message'], $header_logo()) !== false && strpos($mails[0]['message'], 'Giulia Rossi') === false, 'Actual gift emails must include the saved WooCommerce logo and real gift details.');
+    remove_filter('pre_option_woocommerce_email_header_image', $header_logo);
     $check(1 === count($mails[0]['pdf_bytes']) && strncmp($mails[0]['pdf_bytes'][0], '%PDF-', 5) === 0, 'Email must attach a real PDF.');
     $check(! as_has_scheduled_action(Gift_Delivery::HOOK, array($order->get_id(), $item->get_id()), Gift_Delivery::GROUP), 'Manual success must cancel the scheduled job.');
     $check(is_wp_error($service->send($order->get_id(), $item->get_id(), true)) && 1 === count($mails), 'Sent gifts must never be sent twice.');
@@ -462,6 +495,7 @@ try {
     $check(is_wp_error($service->send($failed_order->get_id(), $failed_item->get_id(), true)), 'Transport rejection must fail.');
     $fresh($failed_item);
     $check('failed' === $failed_item->get_meta('_eva_gift_status') && ! $failed_item->get_meta('_eva_gift_sent_at'), 'Failed sends must not have a sent timestamp.');
+    $check($pending_gifts === $gift_badge_count(), 'Failed gifts awaiting manual retry must not count as scheduled sends.');
     $alerts = array_filter($mails, static function ($mail) { return in_array('alerts@example.test', (array) $mail['to'], true); });
     $check(1 === count($alerts), 'Each failed attempt must notify the configured address once.');
     $check(! as_has_scheduled_action(Gift_Delivery::HOOK, array($failed_order->get_id(), $failed_item->get_id()), Gift_Delivery::GROUP), 'Failures must not retry automatically.');
@@ -545,6 +579,7 @@ try {
     $cancel_order->payment_complete();
     $cancel_order->update_status('cancelled');
     $check('cancelled' === $fresh($cancel_item)->get_meta('_eva_gift_status'), 'Cancellation must cancel unsent gifts.');
+    $check($pending_gifts === $gift_badge_count(), 'Cancelled gifts must leave the pending badge.');
     $check(is_wp_error($service->send($cancel_order->get_id(), $cancel_item->get_id(), true)), 'Cancelled gifts cannot be sent manually.');
 
     list($stale_order, $stale_item) = $make_order($product, $data, time() + DAY_IN_SECONDS);
@@ -603,4 +638,6 @@ try {
     WC_Admin_Meta_Boxes::$meta_box_errors = $saved_meta_box_errors;
     remove_filter('pre_wp_mail', $capture, PHP_INT_MAX);
     remove_filter('pre_option_woocommerce_custom_orders_table_enabled', $storage_filter);
+    remove_filter('pre_option_woocommerce_email_header_image', $header_logo);
+    remove_filter('pre_transient_woocommerce_email_header_image', $preview_logo);
 }

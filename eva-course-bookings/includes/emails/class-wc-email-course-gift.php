@@ -21,6 +21,7 @@ class WC_Email_Course_Gift extends \WC_Email
         $this->template_base = EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'templates/';
         $this->placeholders = array('{course_name}' => '', '{recipient_name}' => '', '{sender_name}' => '');
         parent::__construct();
+        add_filter('woocommerce_prepare_email_for_preview', array($this, 'prepare_preview'));
     }
 
     public function get_default_subject()
@@ -31,6 +32,23 @@ class WC_Email_Course_Gift extends \WC_Email
     public function get_default_heading()
     {
         return 'Hai ricevuto un corso in regalo!';
+    }
+
+    public function prepare_preview($email)
+    {
+        if ($email !== $this) {
+            return $email;
+        }
+        $this->gift_data = Voucher_Pdf::sample();
+        $this->gift_item = new \WC_Order_Item_Product();
+        $this->gift_item->set_name('Corso di caffè');
+        $this->gift_item->set_quantity($this->gift_data['quantity']);
+        $this->recipient = 'giulia@example.com';
+        $this->voucher_path = null;
+        $this->placeholders['{course_name}'] = $this->gift_item->get_name();
+        $this->placeholders['{recipient_name}'] = $this->gift_data['recipient'];
+        $this->placeholders['{sender_name}'] = $this->gift_data['sender'];
+        return $email;
     }
 
     public function trigger($order, $item, $path)

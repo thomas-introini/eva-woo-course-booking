@@ -9,7 +9,7 @@ class Gift_Delivery
     const HOOK = 'eva_send_gift_voucher';
     const GROUP = 'eva-course-gifts';
     const RECONCILE = 'eva_reconcile_gift_vouchers';
-    const NOTE_MAX_LENGTH = 250;
+    const NOTE_MAX_LENGTH = 150;
     const NOTE_MAX_BREAKS = 2;
 
     public function __construct()
