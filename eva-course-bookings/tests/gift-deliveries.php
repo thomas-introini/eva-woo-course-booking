@@ -317,6 +317,8 @@ try {
         $check(strpos($editor_html, '616.7') !== false && strpos($editor_html, 'voucher[fields][note][x]') !== false && strpos($editor_html, 'value="350"') !== false, 'Both editors must load the same course layout and PDF dimensions.');
         $check(5 === substr_count($editor_html, 'class="eva-voucher-field-enabled"') && strpos($editor_html, 'voucher[fields][reference][enabled]') !== false, 'Both screens must expose a visibility checkbox for every component.');
         $check(5 === substr_count($editor_html, 'class="eva-voucher-color"') && strpos($editor_html, 'value="#336699"') !== false, 'Both screens must expose a color picker for every component and load saved colors.');
+        $check(5 === substr_count($editor_html, 'data-voucher-field=') && strpos($editor_html, 'eva-voucher-layout-export') !== false && strpos($editor_html, 'eva-voucher-layout-import') !== false, 'Both screens must expose layout export/import for every field.');
+        $check(1 === preg_match('/type="file"[^>]*class="eva-voucher-layout-file"[^>]*accept="\.json,application\/json"[^>]*hidden/', $editor_html), 'Layout file selection must remain local and outside the submitted voucher fields.');
         $check(strpos($editor_html, 'name="voucher[width]"') === false, 'Page size must not be manually editable.');
         if ('product' === $screen) { $check(strpos($editor_html, '<form') === false, 'The product editor must not introduce a nested form.'); }
     }

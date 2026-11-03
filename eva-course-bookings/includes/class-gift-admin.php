@@ -270,7 +270,7 @@ class Gift_Admin
             <p>Il carattere impostato è la dimensione massima. Il testo si adatta automaticamente al riquadro fino a <?php echo esc_html(Voucher_Pdf::MIN_FONT_SIZE); ?> pt.</p>
             <div style="overflow-x:auto"><table class="widefat striped"><thead><tr><th>Campo</th><th>Stampa</th><th>X</th><th>Y</th><th>Larghezza</th><th>Altezza</th><th>Carattere max (pt)</th><th>Allineamento</th><th>Colore</th></tr></thead><tbody>
                 <?php foreach ($labels as $name => $label) : $field = $fields[$name] ?? Voucher_Pdf::defaults()['fields'][$name]; ?>
-                    <tr><th scope="row"><?php echo esc_html($label); ?></th>
+                    <tr data-voucher-field="<?php echo esc_attr($name); ?>"><th scope="row"><?php echo esc_html($label); ?></th>
                     <td><input type="hidden" name="voucher[fields][<?php echo esc_attr($name); ?>][enabled]" value="0">
                         <input type="checkbox" class="eva-voucher-field-enabled" aria-label="<?php echo esc_attr('Stampa ' . $label); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][enabled]" value="1" <?php checked($field['enabled'] ?? true); ?>></td>
                     <?php foreach (array('x', 'y', 'width', 'height', 'size') as $key) : ?>
@@ -282,6 +282,13 @@ class Gift_Admin
                     <td><input type="text" class="eva-voucher-color" aria-label="<?php echo esc_attr('Colore ' . $label); ?>" name="voucher[fields][<?php echo esc_attr($name); ?>][color]" value="<?php echo esc_attr($field['color'] ?? '#000000'); ?>" data-default-color="#000000"></td></tr>
                 <?php endforeach; ?>
             </tbody></table></div>
+            <p>
+                <button type="button" class="button eva-voucher-layout-export">Esporta layout</button>
+                <button type="button" class="button eva-voucher-layout-import">Importa layout</button>
+                <input type="file" class="eva-voucher-layout-file" accept=".json,application/json" hidden>
+            </p>
+            <p class="description">Trasferisci posizioni, dimensioni, caratteri, colori e campi da stampare tra corsi o siti tramite un file JSON. Seleziona il PDF sul corso di destinazione; dopo l’importazione genera l’anteprima e salva la configurazione.</p>
+            <p class="eva-voucher-layout-status" role="status" aria-live="polite"></p>
             <h3>Anteprima con il layout attuale, anche prima del salvataggio</h3>
             <?php foreach (array('recipient' => 'Destinatario', 'sender' => 'Mittente') as $key => $label) : ?>
                 <p><label><?php echo esc_html($label); ?> <input type="text" maxlength="100" name="sample[<?php echo esc_attr($key); ?>]" value="<?php echo esc_attr(Voucher_Pdf::sample()[$key]); ?>"></label></p>

@@ -161,6 +161,8 @@ Each course can use a different page size and layout, even when sharing a PDF at
 
 Use the **Colore** picker beside each field to choose its text color (`#RRGGBB`). Colors are saved per course and apply to previews and delivered PDFs. Existing layouts keep black text until a color is chosen.
 
+Use **Esporta layout** to download the current editor values as JSON, including unsaved changes. In another course or environment, select its local PDF and use **Importa layout** to load that file. The file transfers all five fields' visibility, positions, dimensions, maximum font sizes, alignments, and colors. Preview and save the destination course to apply it. PDFs, media IDs, sample messages, and notification email settings are kept local. Coordinates stay in millimetres, so check the preview when PDF dimensions differ.
+
 #### Review and send gifts
 
 Open **WooCommerce → Corsi → Invii regalo** to filter past/future deliveries by course and status. The tab badge counts gifts scheduled to send, regardless of the selected filters, and disappears when none remain. The list retains requested delivery time, actual send time, latest error, and attempt history while the order exists. **Invia ora** sends a future voucher immediately; **Riprova** retries a failed delivery. Both require a paid order and use the same send routine as cron. Successful sends cannot be sent again from this screen.
@@ -187,6 +189,7 @@ Run the gift regression checks (mail intercepted; temporary products/orders/PDFs
 
 ```bash
 node eva-course-bookings/tests/gift-note.js
+node eva-course-bookings/tests/gift-layout.js
 docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/gift-deliveries.php legacy
 docker exec eva-wpcli wp eval-file /var/www/html/wp-content/plugins/eva-course-bookings/tests/gift-deliveries.php hpos
 ```
@@ -417,6 +420,10 @@ The plugin supports both classic checkout and WooCommerce's new Block Checkout:
 For compatibility with caching plugins, slots are loaded via AJAX on the frontend.
 
 ## Changelog
+
+### 1.4.17
+
+- Export and import voucher layouts as JSON between courses and environments, with preview before saving
 
 ### 1.4.15
 
