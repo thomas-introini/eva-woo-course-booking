@@ -3,6 +3,8 @@
 use Eva_Course_Bookings\Gift_Delivery;
 use Eva_Course_Bookings\Plugin;
 use Eva_Course_Bookings\Voucher_Pdf;
+use setasign\Fpdi\PdfParser\Type\PdfDictionary;
+use setasign\Fpdi\PdfParser\Type\PdfType;
 
 if (! defined('WP_CLI') || ! WP_CLI || ! class_exists(Plugin::class)) {
     throw new RuntimeException('Run with WP-CLI and WooCommerce active.');
@@ -194,13 +196,32 @@ try {
     $size = Voucher_Pdf::dimensions($large_attachment);
     $check(abs($size['width'] - 616.7) < 0.1 && abs($size['height'] - 437.4) < 0.1, 'Page dimensions must come from the PDF, ignoring submitted dimensions.');
     $large_bytes = Voucher_Pdf::render($second_product->get_id(), Voucher_Pdf::sample());
-    $check(strpos($large_bytes, 'Yrsa') !== false && strpos($large_bytes, 'DejaVuSansCondensed') !== false, 'Vouchers must embed Yrsa for personal text and DejaVu for booking details.');
+    $check(strpos($large_bytes, 'GreatVibes') !== false && strpos($large_bytes, 'Yrsa') !== false && strpos($large_bytes, 'DejaVuSansCondensed') !== false, 'Vouchers must embed Great Vibes for messages, Yrsa for names, and DejaVu for booking details.');
     $international = array_merge(Voucher_Pdf::sample(), array('recipient' => 'Мария', 'note' => 'Χρόνια πολλά'));
     $check(strncmp(Voucher_Pdf::render($product->get_id(), $international), '%PDF-', 5) === 0, 'Personal fields must retain Greek and Cyrillic support through the fallback font.');
     $pdf_content = static function ($bytes) {
         $parser = new \setasign\Fpdi\PdfParser\PdfParser(\setasign\Fpdi\PdfParser\StreamReader::createByString($bytes));
         return (new \setasign\Fpdi\PdfReader\PdfReader($parser))->getPage(1)->getContentStream();
     };
+    $font_for_first_text = static function ($bytes) {
+        $parser = new \setasign\Fpdi\PdfParser\PdfParser(\setasign\Fpdi\PdfParser\StreamReader::createByString($bytes));
+        $page = (new \setasign\Fpdi\PdfReader\PdfReader($parser))->getPage(1);
+        $resources = PdfType::resolve($page->getAttribute('Resources'), $parser);
+        $fonts = PdfType::resolve(PdfDictionary::get($resources, 'Font'), $parser);
+        preg_match_all('/\/(F\d+) [\d.]+ Tf/', strstr($page->getContentStream(), ' Tj', true), $used_fonts);
+        $font = PdfType::resolve(PdfDictionary::get($fonts, end($used_fonts[1])), $parser);
+        return PdfDictionary::get($font, 'BaseFont')->value;
+    };
+    $check(strpos($font_for_first_text($large_bytes), 'Yrsa') !== false, 'Recipient names must retain Yrsa.');
+    $message_fields = $first_layout;
+    foreach ($message_fields as &$field) { $field['enabled'] = false; }
+    unset($field);
+    $message_fields['note']['enabled'] = true;
+    $accented_note = 'È un’esperienza speciale: caffè, felicità e più sorrisi!';
+    $message_bytes = Voucher_Pdf::render($product->get_id(), array('note' => $accented_note), $message_fields);
+    $check(strpos($font_for_first_text($message_bytes), 'GreatVibes') !== false && strpos($pdf_content($message_bytes), mb_convert_encoding($accented_note, 'UTF-16BE', 'UTF-8')) !== false, 'Messages must use Great Vibes and preserve Italian accents.');
+    $fallback_bytes = Voucher_Pdf::render($product->get_id(), array('note' => 'Auguri → felicità'), $message_fields);
+    $check(strpos($font_for_first_text($fallback_bytes), 'DejaVuSansCondensed') !== false && strpos($pdf_content($fallback_bytes), mb_convert_encoding('→', 'UTF-16BE', 'UTF-8')) !== false, 'Messages with characters absent from Great Vibes must retain the Unicode fallback.');
     $tokens = array('recipient' => 'RECIPIENTTOKEN', 'sender' => 'SENDERTOKEN', 'note' => 'NOTETOKEN', 'reference' => 'REFTOKEN', 'quantity' => '987');
     $legacy_fields = $first_layout;
     foreach ($legacy_fields as &$field) { unset($field['enabled'], $field['color']); }
@@ -235,7 +256,7 @@ try {
     $long_name = Voucher_Pdf::render($product->get_id(), array('recipient' => str_repeat('W', 100)), $long_fields);
     $check($font_size($long_name) >= 7 && $font_size($long_name) < 9 && substr_count($pdf_content($long_name), "\0W") === 100, 'Long names must shrink below 9 pt without losing any characters.');
     $long_fields['recipient']['enabled'] = false;
-    $long_fields['note'] = array_replace($long_fields['note'], array('enabled' => true, 'x' => 13, 'y' => 70, 'width' => 107, 'height' => 20, 'size' => 18));
+    $long_fields['note'] = array_replace($long_fields['note'], array('enabled' => true, 'x' => 13, 'y' => 70, 'width' => 107, 'height' => 30, 'size' => 18));
     $long_note = Voucher_Pdf::render($product->get_id(), array('note' => str_repeat('W', 250)), $long_fields);
     $check($font_size($long_note) >= 7 && $font_size($long_note) < 9 && substr_count($pdf_content($long_note), "\0W") === 250, 'An existing 250-character unbroken message must fit without truncation.');
     $spaced_note = Voucher_Pdf::render($product->get_id(), array('note' => str_repeat('Tanti auguri! ', 19)), $long_fields);

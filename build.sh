@@ -45,7 +45,7 @@ zip -r "$OUTPUT_FILE" "$PLUGIN_NAME" \
     -x "*/composer.lock" \
     -x "*/package-lock.json"
 
-# Keep DejaVu for reference text and characters absent from the bundled Yrsa font.
+# Keep DejaVu for reference text and characters absent from the bundled personal-text fonts.
 zip "$OUTPUT_FILE" "$PLUGIN_NAME/vendor/setasign/tfpdf/font/unifont/DejaVuSansCondensed.ttf"
 
 # Get file size

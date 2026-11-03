@@ -139,6 +139,7 @@ class Voucher_Pdf
                 parent::__construct();
                 $this->fontpath = EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'assets/fonts/';
                 $this->AddFont('Yrsa', '', 'Yrsa-Regular.ttf', true);
+                $this->AddFont('GreatVibes', '', 'GreatVibes-Regular.ttf', true);
                 $this->fontpath = EVA_COURSE_BOOKINGS_PLUGIN_DIR . 'vendor/setasign/tfpdf/font/';
                 $this->AddFont('DejaVu', '', 'DejaVuSansCondensed.ttf', true);
             }
@@ -189,7 +190,7 @@ class Voucher_Pdf
                 continue;
             }
             $personal = in_array($key, array('recipient', 'sender', 'note'), true);
-            $pdf->SetFont($personal ? 'Yrsa' : 'DejaVu', '', 12);
+            $pdf->SetFont('note' === $key ? 'GreatVibes' : ($personal ? 'Yrsa' : 'DejaVu'), '', 12);
             if ($personal && ! $pdf->supports($value)) {
                 $pdf->SetFont('DejaVu', '', 12);
             }
