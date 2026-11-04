@@ -419,7 +419,14 @@ The plugin supports both classic checkout and WooCommerce's new Block Checkout:
 
 For compatibility with caching plugins, slots are loaded via AJAX on the frontend.
 
+Gift fields are rendered in the product page HTML. Saving a course's voucher configuration purges that product page from W3 Total Cache when it is active. If an existing cached page still shows only the recipient email after assigning a PDF, purge the product URL in W3 Total Cache and any separate CDN/page cache.
+
 ## Changelog
+
+### 1.4.18
+
+- Purge cached course pages when voucher settings are saved so gift fields reflect the selected PDF
+- Prevent buffered output and response-length mismatches from corrupting voucher PDF previews
 
 ### 1.4.17
 

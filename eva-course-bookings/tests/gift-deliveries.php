@@ -49,6 +49,15 @@ $capture = static function ($result, $mail) use (&$mails, &$fail_recipient, &$fa
     return (! $fail_recipient || ! in_array($fail_recipient, (array) $mail['to'], true)) && (! $fail_alert || ! in_array('alerts@example.test', (array) $mail['to'], true));
 };
 add_filter('pre_wp_mail', $capture, PHP_INT_MAX, 2);
+// Emulate W3 Total Cache's public API when it is not installed in the test store.
+if (! function_exists('w3tc_flush_post')) {
+    function w3tc_flush_post($post_id, $force = false) { do_action('w3tc_flush_post', $post_id, $force); }
+}
+$cache_purges = array();
+$capture_cache_purge = static function ($post_id, $force) use (&$cache_purges) {
+    $cache_purges[] = array($post_id, $force, (int) get_post_meta($post_id, '_eva_gift_pdf_id', true));
+};
+add_action('w3tc_flush_post', $capture_cache_purge, 10, 2);
 $plugin = Plugin::get_instance();
 $service = $plugin->gift_delivery;
 $gift_badge_count = static function () use ($plugin) {
@@ -119,8 +128,10 @@ try {
     update_option(Voucher_Pdf::OPTION, $unfinished_layout);
     $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => (string) $attachment);
     WC_Admin_Meta_Boxes::$meta_box_errors = array();
+    $cache_purges = array();
     $plugin->gift_admin->save_product($product->get_id());
     $check((int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true) === $attachment, 'A PDF selection must persist before its layout is configured.');
+    $check($cache_purges === array(array($product->get_id(), true, $attachment)), 'Saving a PDF must purge its product page after persisting the selection, even with an unfinished layout.');
     $check(strpos(implode(' ', WC_Admin_Meta_Boxes::$meta_box_errors), 'PDF associato') !== false, 'Unfinished layout must show an actionable warning after saving the PDF.');
     ob_start(); $plugin->gift_admin->render_settings(); $unfinished_html = ob_get_clean();
     $check(strpos($unfinished_html, '<option value="' . $product->get_id() . '"') !== false, 'An assigned PDF must make the course selectable while configuring its layout.');
@@ -135,10 +146,12 @@ try {
     $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => '0');
     $plugin->gift_admin->save_product($product->get_id());
     $check((int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true) === $attachment, 'Unauthorized users must not change the PDF assignment.');
+    $check(1 === count($cache_purges), 'Invalid media and unauthorized saves must not purge product pages.');
     wp_set_current_user($admin[0]->ID);
     $_POST['eva_voucher_nonce'] = wp_create_nonce('eva_voucher_settings');
     $plugin->gift_admin->save_product($product->get_id());
     $check(0 === (int) get_post_meta($product->get_id(), '_eva_gift_pdf_id', true), 'Removing a PDF must persist.');
+    $check(end($cache_purges) === array($product->get_id(), true, 0), 'Removing a PDF must purge its product page after clearing the selection.');
     ob_start(); $plugin->frontend->render_booking_selector($product->get_id()); $legacy_selector = ob_get_clean();
     $check(strpos($legacy_selector, 'name="eva_gift_email"') !== false && strpos($legacy_selector, 'name="eva_gift_mode"') === false, 'Courses without a saved PDF must retain the legacy gift form.');
     $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), '_eva_gift_pdf_id' => (string) $attachment);
@@ -180,8 +193,10 @@ try {
     try {
         $_POST = array('eva_voucher_nonce' => wp_create_nonce('eva_voucher_settings'), 'voucher_product_id' => $second_product->get_id(), '_eva_gift_pdf_id' => $large_attachment, 'voucher' => array('fields' => $large_fields, 'width' => 1, 'height' => 1));
         $_REQUEST = $_POST;
+        $cache_purges = array();
         try { $plugin->gift_admin->save_course(); } catch (RuntimeException $error) { $check('gift-test-redirect' === $error->getMessage(), $error->getMessage()); }
         $check(strpos($redirect, 'voucher_product_id=' . $second_product->get_id()) !== false, 'Settings save must retain the selected course.');
+        $check($cache_purges === array(array($second_product->get_id(), true, $large_attachment)), 'Saving from the course settings must purge only the selected product page.');
         $check(Voucher_Pdf::layout($second_product->get_id()) == $large_fields && Voucher_Pdf::layout($product->get_id()) === $first_layout, 'Saving a course from settings must not change another course.');
         $_POST['voucher']['fields']['reference']['enabled'] = '0';
         try { $plugin->gift_admin->save_course(); } catch (RuntimeException $error) { $check('gift-test-redirect' === $error->getMessage(), $error->getMessage()); }
@@ -192,11 +207,30 @@ try {
         $_REQUEST = array('_wpnonce' => wp_create_nonce('eva_voucher_settings'));
         try { $plugin->gift_admin->save_settings(); } catch (RuntimeException $error) { $check('gift-test-redirect' === $error->getMessage(), $error->getMessage()); }
         $check(Voucher_Pdf::settings()['fields'] === $settings['fields'] && Voucher_Pdf::layout($second_product->get_id()) == $large_fields, 'Global notification settings must preserve legacy and product coordinates.');
+        $check(3 === count($cache_purges), 'Saving the notification email must not purge product pages.');
     } finally { remove_filter('wp_redirect', $stop_redirect, -1000); }
     $size = Voucher_Pdf::dimensions($large_attachment);
     $check(abs($size['width'] - 616.7) < 0.1 && abs($size['height'] - 437.4) < 0.1, 'Page dimensions must come from the PDF, ignoring submitted dimensions.');
     $large_bytes = Voucher_Pdf::render($second_product->get_id(), Voucher_Pdf::sample());
     $check(strpos($large_bytes, 'GreatVibes') !== false && strpos($large_bytes, 'Yrsa') !== false && strpos($large_bytes, 'DejaVuSansCondensed') !== false, 'Vouchers must embed Great Vibes for messages, Yrsa for names, and DejaVu for booking details.');
+    // Preview exits after sending the PDF, so exercise it in a separate WordPress process.
+    $preview_code = 'namespace Eva_Course_Bookings;
+        function header($value) {
+            if (stripos($value, "Content-Length:") === 0) {
+                throw new \\RuntimeException("Preview must leave response framing to the server.");
+            }
+            \\header($value);
+        }
+        \\wp_set_current_user(' . (int) $admin[0]->ID . ');
+        $_POST = array("voucher_product_id" => ' . (int) $second_product->get_id() . ', "eva_voucher_nonce" => \\wp_create_nonce("eva_voucher_settings"));
+        $_REQUEST = $_POST;
+        \\ob_start(static function ($buffer) { return "Output filter replaced the PDF."; });
+        \\ob_start();
+        echo "Buffered plugin notice.";
+        Plugin::get_instance()->gift_admin->preview();';
+    $preview_response = WP_CLI::runcommand('eval ' . escapeshellarg($preview_code), array('return' => 'all', 'exit_error' => false));
+    $check(0 === $preview_response->return_code, 'PDF preview must succeed: ' . $preview_response->stderr);
+    $check(strncmp($preview_response->stdout, '%PDF-', 5) === 0 && substr(rtrim($preview_response->stdout), -5) === '%%EOF', 'Preview must discard buffered notices and output filters and send the complete PDF.');
     $international = array_merge(Voucher_Pdf::sample(), array('recipient' => 'Мария', 'note' => 'Χρόνια πολλά'));
     $check(strncmp(Voucher_Pdf::render($product->get_id(), $international), '%PDF-', 5) === 0, 'Personal fields must retain Greek and Cyrillic support through the fallback font.');
     $pdf_content = static function ($bytes) {
@@ -649,6 +683,7 @@ try {
     }
     WP_CLI::success('Independent product layouts, PDF dimensions, gift validation, PDFs, checkout, scheduling, payment, manual sends, errors, recovery, privacy, and history passed (' . ($mode ?: 'current storage') . ').');
 } finally {
+    remove_action('w3tc_flush_post', $capture_cache_purge, 10);
     foreach (array_reverse($orders) as $order) { $service->cancel_order_jobs($order->get_id()); $order->delete(true); }
     foreach (array_reverse($posts) as $id) { 'attachment' === get_post_type($id) ? wp_delete_attachment($id, true) : wp_delete_post($id, true); }
     foreach (array(Voucher_Pdf::OPTION => $saved_vouchers, 'woocommerce_eva_course_gift_settings' => $saved_email_settings, 'woocommerce_eva_course_completed_order_settings' => $saved_completed) as $key => $value) {

@@ -60,6 +60,10 @@ class Gift_Admin
             return new \WP_Error('pdf', 'Modello voucher non salvato: seleziona un PDF dalla libreria media.');
         }
         update_post_meta($product_id, '_eva_gift_pdf_id', $id);
+        // Voucher settings save metadata without triggering W3 Total Cache's post-save purge.
+        if (function_exists('w3tc_flush_post')) {
+            w3tc_flush_post($product_id, true);
+        }
         if (! $id) {
             return true;
         }
@@ -169,11 +173,14 @@ class Gift_Admin
             $fields = isset($_POST['voucher']) ? wp_unslash($_POST['voucher']['fields'] ?? array()) : null;
             $pdf_id = isset($_POST['_eva_gift_pdf_id']) ? absint($_POST['_eva_gift_pdf_id']) : null;
             $bytes = Voucher_Pdf::render($product_id, $data, $fields, $pdf_id);
+            // Discard buffered notices/filters and let the server frame the binary response.
+            while (ob_get_level() > 0 && @ob_end_clean()) {
+            }
             nocache_headers();
             header('Content-Type: application/pdf');
             header('Content-Disposition: inline; filename="anteprima-voucher.pdf"');
             header('X-Content-Type-Options: nosniff');
-            header('Content-Length: ' . strlen($bytes));
+            header_remove('Content-Length');
             echo $bytes;
             exit;
         } catch (\Throwable $error) {
